@@ -1,7 +1,5 @@
 package io.homeassistant.companion.android.sensors
 
-import androidx.annotation.VisibleForTesting
-
 /**
  * The decision of whether a freshly received location should be sent to a given Home Assistant server.
  *
@@ -10,12 +8,15 @@ import androidx.annotation.VisibleForTesting
  * feature is bearable on a metered connection and a recorder-backed Home Assistant: without them every
  * fix becomes a `device_tracker` state change.
  *
+ * The object is `internal` to the module: production code is a legitimate caller, while the unit
+ * test source set can still reach it (Kotlin treats the test compilation as a friend), so no
+ * `@VisibleForTesting` marker is wanted here - it would flag the production call sites.
+ *
  * They are also the rules a previous revision of this project silently dropped, which produced two
  * user-visible failures: identical coordinates re-posted on every heartbeat, and a failed send
  * suppressing the next perfectly good fix. Keep the ordering - a fix that is both a duplicate and
  * stale must be reported as stale.
  */
-@VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
 internal object LocationSendGate {
     /** Clock skew tolerance: a fix this far ahead of the device clock is not trusted. */
     const val FUTURE_TOLERANCE_MS = 5000L

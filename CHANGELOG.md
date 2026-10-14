@@ -80,10 +80,16 @@
 ### 测试状态
 
 - `ktlintCheck`（app / common / build-logic）通过。
-- Android Lint（`lintMinimalRelease`）通过。
-- 单元测试 `:app:testFullDebugUnitTest` 1298 项通过；2 项失败为 Windows 上 Robolectric 的既有环境问题
-  （测试临时目录路径长 262 字符，超过 `MAX_PATH` 260；沿用上游原包名同样超长），与本项目改动无关。
-- `:common:testDebugUnitTest` 中 `UrlUtilTest` 一条失败为环境依赖：该用例断言一个不存在的域名无法解析，
-  而本机 DNS 是代理通配解析器（Clash/sing-box TUN 对任意域名返回 198.18.x.x）。
-- 定位新实现已完成编译、静态检查与打包验证；真机上的定位行为（尤其是网络定位返回 WGS-84 还是 GCJ-02、
+- `:app:lintMinimalRelease` 通过（0 错误）。
+- 单元测试全量 3190 个：1 个失败为本机环境依赖（`UrlUtilTest` 假设一个不存在的域名解析不了，
+  而 Clash/sing-box 的 TUN 模式对任意域名都返回 198.18.x.x），由 `scripts/check-test-results.py`
+  按失败特征显式识别；非预期失败 0 个。
+- 原本在 Windows 上恒失败的 2 个 Robolectric 导航测试已**真正修复**（不是跳过）：测试 JVM 的
+  临时目录根改短，使每轮测试的数据库路径不再超过 MAX_PATH 260 字符上限。
+- `minimal` flavor 此前一个单元测试都跑不起来（共享测试源集引用了只存在于 `full` 的类），现在
+  可运行 1228 个用例。
+- 新增 11 条用例锁定"这一帧要不要发给服务器"的判定顺序（未来/过旧/重复/防抖/围栏不防抖）。
+- 定位新实现已完成编译、静态检查、单元测试与打包验证，并已在 Android 36 模拟器上安装启动；
+  但**真机行为仍待验证**，尤其是两点：目标机型上 `NETWORK_PROVIDER` 返回 WGS-84 还是 GCJ-02，
+  以及 `addProximityAlert` 是否被该机型 servicing。
   以及 `addProximityAlert` 的支持情况）仍需在目标机型上实测。
