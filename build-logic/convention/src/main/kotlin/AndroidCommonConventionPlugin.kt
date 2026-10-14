@@ -83,6 +83,22 @@ class AndroidCommonConventionPlugin : Plugin<Project> {
 
                 tasks.withType<Test> {
                     useJUnitPlatform()
+
+                    // Robolectric builds a per-test path under the JVM's temp root:
+                    //   <tmp>/robolectric-<Class>_<method>_<id>/<applicationId>-dataDir/databases
+                    // which measures 262 characters against the default %LOCALAPPDATA%\Temp root on
+                    // Windows - over MAX_PATH, so SQLite refuses to open the database and navigation
+                    // tests fail before reaching any assertion. Put the root at the shortest portable
+                    // location instead. Not applied to other platforms, which have no such limit.
+                    val isWindows = System.getProperty("os.name").startsWith("Windows")
+                    if (isWindows) {
+                        val shortTempRoot = File(
+                            System.getenv("SYSTEMDRIVE")?.takeIf { it.isNotBlank() } ?: "C:",
+                            "tmp",
+                        )
+                        shortTempRoot.mkdirs()
+                        systemProperty("java.io.tmpdir", shortTempRoot.path)
+                    }
                 }
 
                 with(lint) {

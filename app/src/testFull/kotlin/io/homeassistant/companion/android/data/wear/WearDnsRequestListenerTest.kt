@@ -19,7 +19,10 @@ import org.junit.jupiter.api.assertNull
 class WearDnsRequestListenerTest {
     private val testHostname = "homeassistant.local"
 
-    private val homeAssistantLocal: InetAddress = InetAddress.getByAddress(testHostname, byteArrayOf(192.toByte(), 168.toByte(), 0, 23))
+    private val homeAssistantLocal: InetAddress = InetAddress.getByAddress(
+        testHostname,
+        byteArrayOf(192.toByte(), 168.toByte(), 0, 23),
+    )
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test

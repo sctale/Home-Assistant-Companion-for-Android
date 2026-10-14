@@ -24,15 +24,18 @@ fi
 echo "==> Style (ktlint)"
 ./gradlew "${GRADLE[@]}" ktlintCheck :build-logic:convention:ktlintCheck --continue
 
-# Known environment-dependent failure, not a code defect: `UrlUtilTest` asserts that a made-up domain
-# does not resolve, which is false on a machine whose DNS is a wildcard proxy resolver (Clash/sing-box
-# TUN answers every query with 198.18.x.x). It is reported but does not gate this project.
 echo "==> Tests"
-# Mirrors upstream's task selection: `testDebugUnitTest` + `:app:testFullDebugUnitTest`. The shared
-# unit-test source set under app/src/test references classes that only exist in the `full` flavour
-# (WearDnsRequestListener, the Play-services wear tiles), so `:app:testMinimalDebugUnitTest` cannot
-# compile - that is upstream's own structure, noted in their pr.yml, not something this fork broke.
-./gradlew "${GRADLE[@]}" testDebugUnitTest :app:testFullDebugUnitTest :lint:test --continue
+# Upstream's CI runs `testDebugUnitTest :app:testFullDebugUnitTest :lint:test` and notes that "Minimal
+# and Full are the same in unit tests for now": three tests in the shared app/src/test source set
+# reference full-only classes (WearDnsRequestListener and the Play-services wear tiles), so
+# :app:testMinimalDebugUnitTest could not compile at all - the flavour this project ships had zero
+# runnable unit tests. Those three files now live in app/src/testFull, which the repository already
+# uses for exactly this purpose, so both variants run: minimal executes ~1230 tests.
+# --continue: collect every failure, then judge them in one pass against an explicit allowlist of
+# machine-dependent failures (see scripts/check-test-results.py). A gate that is permanently red is
+# not a gate.
+./gradlew "${GRADLE[@]}" testDebugUnitTest :app:testFullDebugUnitTest :app:testMinimalDebugUnitTest :lint:test --continue || true
+python3 scripts/check-test-results.py
 
 echo "==> Static analysis (Android Lint on the shipped flavour)"
 ./gradlew "${GRADLE[@]}" :app:lintMinimalRelease

@@ -135,46 +135,48 @@ class SettingsWearRepositoryTest {
     inner class RegisterRefreshTokenTest {
 
         @Test
-        fun `Given successful token refresh, when registerRefreshToken, then return server with new access token`() = runTest {
-            val server = createWearServer()
-            val refreshToken = "refresh_token_123"
-            val newAccessToken = "new_access_token_456"
-            val urlSlot = slot<HttpUrl>()
+        fun `Given successful token refresh, when registerRefreshToken, then return server with new access token`() =
+            runTest {
+                val server = createWearServer()
+                val refreshToken = "refresh_token_123"
+                val newAccessToken = "new_access_token_456"
+                val urlSlot = slot<HttpUrl>()
 
-            coEvery {
-                authenticationService.refreshToken(capture(urlSlot), any(), any(), any())
-            } returns Response.success(Token(newAccessToken, 3600, refreshToken, "Bearer"))
+                coEvery {
+                    authenticationService.refreshToken(capture(urlSlot), any(), any(), any())
+                } returns Response.success(Token(newAccessToken, 3600, refreshToken, "Bearer"))
 
-            val result = repository.registerRefreshToken(server, refreshToken)
+                val result = repository.registerRefreshToken(server, refreshToken)
 
-            assertEquals(newAccessToken, result.accessToken)
-            assertEquals(server.externalUrl, result.externalUrl)
-            assertTrue(urlSlot.captured.encodedPath.endsWith("/auth/token"))
-            coVerify {
-                authenticationService.refreshToken(
-                    any(),
-                    AuthenticationService.GRANT_TYPE_REFRESH,
-                    refreshToken,
-                    AuthenticationService.CLIENT_ID,
-                )
+                assertEquals(newAccessToken, result.accessToken)
+                assertEquals(server.externalUrl, result.externalUrl)
+                assertTrue(urlSlot.captured.encodedPath.endsWith("/auth/token"))
+                coVerify {
+                    authenticationService.refreshToken(
+                        any(),
+                        AuthenticationService.GRANT_TYPE_REFRESH,
+                        refreshToken,
+                        AuthenticationService.CLIENT_ID,
+                    )
+                }
             }
-        }
 
         @Test
-        fun `Given null response body, when registerRefreshToken, then throw IntegrationException with AuthorizationException cause`() = runTest {
-            val server = createWearServer()
+        fun `Given null response body when registerRefreshToken then throws IntegrationException with auth cause`() =
+            runTest {
+                val server = createWearServer()
 
-            coEvery {
-                authenticationService.refreshToken(any(), any(), any(), any())
-            } returns Response.success(null)
+                coEvery {
+                    authenticationService.refreshToken(any(), any(), any(), any())
+                } returns Response.success(null)
 
-            try {
-                repository.registerRefreshToken(server, "refresh_token")
-                fail("Expected IntegrationException to be thrown")
-            } catch (e: IntegrationException) {
-                assertInstanceOf(AuthorizationException::class.java, e.cause)
+                try {
+                    repository.registerRefreshToken(server, "refresh_token")
+                    fail("Expected IntegrationException to be thrown")
+                } catch (e: IntegrationException) {
+                    assertInstanceOf(AuthorizationException::class.java, e.cause)
+                }
             }
-        }
 
         @Test
         fun `Given unsuccessful response, when registerRefreshToken, then throw IntegrationException`() = runTest {
