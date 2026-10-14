@@ -40,7 +40,6 @@ extensions.configure<org.ajoberstar.reckon.gradle.ReckonExtension>("reckon") {
     setTagWriter { it.toString() }
 }
 
-
 dependencyResolutionManagement {
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
     repositories {
@@ -57,8 +56,3 @@ dependencyResolutionManagement {
         maven("https://jitpack.io")
     }
 }
-
-
-//typesafeConventions {
-//    allowTopLevelBuild = true
-//}

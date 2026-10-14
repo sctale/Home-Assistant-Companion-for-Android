@@ -4,9 +4,23 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.apply
 import org.gradle.kotlin.dsl.configure
-import java.text.SimpleDateFormat
 
-private const val APPLICATION_ID = "io.homeassistant.companion.android"
+/**
+ * Package namespace of the upstream sources. This is *not* the installed application id: it is only
+ * the Kotlin/JVM package that the `R` class and the manifest's relative component names resolve
+ * against, so it has to stay aligned with the source tree we inherited from upstream.
+ */
+private const val NAMESPACE = "io.homeassistant.companion.android"
+
+/**
+ * Installed application id of **this** build.
+ *
+ * Deliberately different from upstream's `io.homeassistant.companion.android`: this is an unofficial,
+ * Google-services-free rebuild, and installing it under the official id would collide with (and be
+ * offered as an upgrade over) the official app. Keeping our own id makes the two apps provably
+ * independent on a device.
+ */
+private const val APPLICATION_ID = "dev.sctale.homeassistant.companion"
 
 /**
  * A convention plugin that applies common configurations to Android application modules.
@@ -21,7 +35,7 @@ private const val APPLICATION_ID = "io.homeassistant.companion.android"
  *
  * The application's `versionCode` can be set via the `VERSION_CODE` environment variable.
  *
- * A `release` signing configuration is automatically created. The keystore information can beexo_controls_playback_speeds
+ * A `release` signing configuration is automatically created. The keystore information can be
  * provided through the following environment variables:
  * - `KEYSTORE_PATH`: The path to the keystore file.
  * - `KEYSTORE_PASSWORD`: The password for the keystore.
@@ -40,14 +54,15 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             AndroidComposeConventionPlugin().apply(target)
 
             extensions.configure<ApplicationExtension> {
-                namespace = APPLICATION_ID
+                namespace = NAMESPACE
 
                 defaultConfig {
                     applicationId = APPLICATION_ID
                     targetSdk = libs.versions.androidSdk.target.get().toInt()
 
-                    versionName = getVersionName()
-                    versionCode = getVersionCode()
+                    versionName = project.version.toString()
+                    versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+
                     val noStrictMode = project.findProperty("noStrictMode")?.toString()?.ifEmpty { "true" }
                         ?.toBoolean() ?: false
                     buildConfigField("Boolean", "NO_STRICT_MODE", noStrictMode.toString())
@@ -57,16 +72,12 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     viewBinding = true
                 }
 
-                val NESTOR_KEYSTORE_PASSWORD = System.getenv("NESTOR_KEYSTORE_PASSWORD")
-                val NESTOR_KEYSTORE_ALIAS = System.getenv("NESTOR_KEYSTORE_ALIAS")
-                // val PGY_API_KEY = System.getenv("PGY_API_KEY")
-
                 signingConfigs {
                     create("release") {
-                        storeFile = file("../nestor.keystore")
-                        storePassword = NESTOR_KEYSTORE_PASSWORD
-                        keyAlias = NESTOR_KEYSTORE_ALIAS
-                        keyPassword = NESTOR_KEYSTORE_PASSWORD
+                        storeFile = file(System.getenv("KEYSTORE_PATH") ?: "release_keystore.keystore")
+                        storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+                        keyAlias = System.getenv("KEYSTORE_ALIAS") ?: ""
+                        keyPassword = System.getenv("KEYSTORE_ALIAS_PASSWORD") ?: ""
                         enableV1Signing = true
                         enableV2Signing = true
                     }
@@ -85,12 +96,4 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             }
         }
     }
-}
-fun getVersionCode(): Int {
-    val time = System.currentTimeMillis()
-    return (time / 1000).toInt()
-}
-
-fun getVersionName(): String {
-    return "v" + SimpleDateFormat("yyyy-MM-dd").format(System.currentTimeMillis())
 }
