@@ -664,6 +664,14 @@
     <string name="sensor_setting_location_ham_zone_bt_combined_title">仅在区域中且连接 BT 设备时启用高精度模式</string>
     <string name="sensor_setting_location_include_sensor_update_title">包括在传感器更新中</string>
     <string name="sensor_setting_location_minimum_accuracy_title">最低精度</string>
+    <string name="sensor_setting_location_provider_title">定位来源</string>
+    <string name="sensor_setting_location_provider_auto_label">自动（优先网络定位，最省电）</string>
+    <string name="sensor_setting_location_provider_network_label">仅网络定位</string>
+    <string name="sensor_setting_location_provider_gps_label">仅 GPS（最准，最耗电）</string>
+    <string name="sensor_setting_location_update_interval_title">定位更新间隔（秒）</string>
+    <string name="sensor_setting_location_minimum_distance_title">两次更新的最小距离（米）</string>
+    <string name="sensor_setting_location_zone_proximity_alerts_title">定时更新之间也响应进出区域</string>
+    <string name="sensor_setting_location_zone_proximity_alerts_description">使用系统的临近提醒接口作为唤醒来源。各机型支持程度不同；不支持时，进出区域仍会在下一次定时更新时被检测到。</string>
     <string name="sensor_setting_location_minimum_time_updates_title">最小更新时间间隔</string>
     <string name="sensor_setting_location_send_as_exact_label">精确的</string>
     <string name="sensor_setting_location_send_as_title">位置已发送</string>

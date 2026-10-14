@@ -759,6 +759,14 @@
     <string name="sensor_setting_location_ham_update_interval_title">High accuracy mode update interval (seconds)</string>
     <string name="sensor_setting_location_include_sensor_update_title">Include in sensor update</string>
     <string name="sensor_setting_location_minimum_accuracy_title">Minimum accuracy</string>
+    <string name="sensor_setting_location_provider_title">Location provider</string>
+    <string name="sensor_setting_location_provider_auto_label">Automatic (prefers network, least battery)</string>
+    <string name="sensor_setting_location_provider_network_label">Network only</string>
+    <string name="sensor_setting_location_provider_gps_label">GPS only (most accurate, most battery)</string>
+    <string name="sensor_setting_location_update_interval_title">Location update interval (seconds)</string>
+    <string name="sensor_setting_location_minimum_distance_title">Minimum distance between updates (meters)</string>
+    <string name="sensor_setting_location_zone_proximity_alerts_title">React to zone crossings between updates</string>
+    <string name="sensor_setting_location_zone_proximity_alerts_description">Uses the platform proximity-alert API as a wake source. Support varies by device; when it is unavailable, zone changes are still detected on the next scheduled update.</string>
     <string name="sensor_setting_location_minimum_time_updates_title">Minimum time between updates</string>
     <string name="sensor_setting_network_get_current_bssid_title">Get current BSSID</string>
     <string name="sensor_setting_network_replace_mac_title">Replace MAC address %1$s with …</string>
