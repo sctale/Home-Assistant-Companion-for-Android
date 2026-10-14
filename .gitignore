@@ -340,6 +340,13 @@ fabric.properties
 # Custom ignore rules
 
 google-services.json
+# ...except the credential-free placeholder for the `minimal` flavour, which ships no Firebase project
+# at all. It exists purely to satisfy the google-services plugin (which the app convention plugin
+# applies to every flavour); without it no APK can be built, so unlike a real config it must stay
+# tracked. It carries no credentials.
+!app/src/minimal/google-services.json
+!wear/src/google-services.json
+!automotive/src/google-services.json
 *.keystore
 version.txt
 
@@ -349,6 +356,8 @@ version.txt
 ## Make sure our translation downloads don't make our repo dirty when building.
 strings.zip
 common/src/main/res/*/strings.xml
+# ...but our vendored Simplified Chinese translations are tracked (no Lokalise pipeline in this fork)
+!common/src/main/res/values-zh-rCN/strings.xml
 app/src/main/res/xml/locales_config.xml
 wear/src/main/res/xml/locales_config.xml
 !common/src/main/res/values/strings.xml
@@ -369,3 +378,7 @@ playStorePublishServiceCredentialsFile.json
 
 ## Temp results from the CI
 merged_results.sarif
+
+# This project's release signing material. The key store and its password must never be
+# committed: an APK signed with a published key can be overwritten onto every installed device.
+keystore/

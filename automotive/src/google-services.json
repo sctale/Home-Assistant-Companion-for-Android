@@ -1,0 +1,87 @@
+{
+  "project_info": {
+    "project_number": "000000000000",
+    "firebase_url": "https://placeholder.firebaseio.com",
+    "project_id": "placeholder",
+    "storage_bucket": "placeholder.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "000000000000:android:0000000000000000000000",
+        "android_client_info": {
+          "package_name": "dev.sctale.homeassistant.companion"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "placeholder_no_credentials"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "000000000000:android:0000000000000000000000",
+        "android_client_info": {
+          "package_name": "dev.sctale.homeassistant.companion.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "placeholder_no_credentials"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "000000000000:android:0000000000000000000000",
+        "android_client_info": {
+          "package_name": "dev.sctale.homeassistant.companion.minimal"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "placeholder_no_credentials"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "000000000000:android:0000000000000000000000",
+        "android_client_info": {
+          "package_name": "dev.sctale.homeassistant.companion.minimal.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "placeholder_no_credentials"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
