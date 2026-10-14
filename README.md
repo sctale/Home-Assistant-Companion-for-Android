@@ -140,8 +140,13 @@
 
 ```bash
 scripts/verify.sh                      # 代码风格 + 测试 + Lint + 构建
-scripts/build-release.sh 0.1.0 100     # 产出签名的 release APK
+scripts/build-release.sh 1            # 产出并验签 release APK（版本号取自 HEAD 的 git tag）
+scripts/publish-release.sh            # 推送 master + tag 并创建 GitHub Release
 ```
+
+发布脚本必须在**仓库所有者本人的终端**里执行：它会往 GitHub 推东西，而构建这套产物的自动化环境被本机安全策略禁止对外网写入。也可以直接双击仓库根目录的 `发布v0.1.0到GitHub.bat`。脚本会先自检（产物存在、tag 就在当前提交上、发布说明里的 APK 校验和与实际产物一致），任一不符都不会推。`--dry-run` 只跑自检。
+
+`versionCode` 每次发版手动 +1（写在这行命令里），`versionName` 由 git tag 推导，所以顺序是"提交 → 打 tag → 构建"。
 
 需要 JDK 17+ 与 Android SDK Platform 37。签名材料放在 `keystore/signing.env`（已被 git 忽略，
 **不要提交**）；仓库里不含任何密钥。构建 `full` flavor（带 FCM 推送）需要自己提供
