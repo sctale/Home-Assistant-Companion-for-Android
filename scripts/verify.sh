@@ -13,6 +13,14 @@ cd "$(dirname "$0")/.."
 
 GRADLE=(--console=plain)
 
+# The google-services plugin runs for every flavour, so the full-flavour tasks need a
+# google-services.json. Upstream synthesised one in CI (the deleted inflate-secrets action); locally we
+# copy the credential-free placeholder. A real app/google-services.json is never overwritten.
+if [[ ! -f app/google-services.json ]]; then
+  echo "==> Installing placeholder google-services.json (no credentials; see tools/)"
+  cp tools/mock-google-services.json app/google-services.json
+fi
+
 echo "==> Style (ktlint)"
 ./gradlew "${GRADLE[@]}" ktlintCheck :build-logic:convention:ktlintCheck --continue
 

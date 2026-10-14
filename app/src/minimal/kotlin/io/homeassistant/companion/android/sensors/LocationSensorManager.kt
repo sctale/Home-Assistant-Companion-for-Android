@@ -129,9 +129,6 @@ class LocationSensorManager :
 
         private const val HISTORY_DURATION = 60 * 60 * 48 * 1000L // 48 hours, as in the `full` flavour
 
-        private const val LOCATION_SEND_DEBOUNCE_MS = 5000L
-        private const val DUPLICATE_LOCATION_WINDOW_MS = 15 * 60 * 1000L
-        private const val FRESH_LOCATION_WINDOW_MS = 300000L
         private val zoneCacheDurationMs = TimeUnit.HOURS.toMillis(4)
         private const val ONE_FIX_TIMEOUT_MS = 30_000L
         private const val MAX_ACCURATE_FIX_ATTEMPTS = 5
@@ -182,6 +179,12 @@ class LocationSensorManager :
             "mdi:crosshairs-gps",
             updateType = SensorManager.BasicSensor.UpdateType.LOCATION,
         )
+
+        /** Why a location is being requested, so cost and accuracy can be traded differently. */
+        enum class Purpose {
+            BACKGROUND,
+            ACCURATE,
+        }
 
         enum class LocationUpdateTrigger(val isGeofence: Boolean = false) {
             BACKGROUND_LOCATION,
@@ -379,8 +382,19 @@ class LocationSensorManager :
      * The provider choice is a single policy owned by `location_background` and applied to every
      * location request, rather than a per-sensor setting the user would have to keep in sync.
      */
+    /**
+     * Chooses a provider.
+     *
+     * [Purpose.BACKGROUND] optimises for cost: the platform fused provider, then network, and GPS
+     * only as a last resort - a continuously hot GPS chip is what drained users' batteries before.
+     *
+     * [Purpose.ACCURATE] deliberately reorders the candidates to put GPS ahead of network. The
+     * one-off "accurate location" request is the opposite trade: it runs briefly, and returning a
+     * ~100 m network fix would sail straight through the minimum-accuracy gate and make the
+     * `accurate_location` sensor indistinguishable from background reporting.
+     */
     @SuppressLint("InlinedApi") // FUSED_PROVIDER is an inlined String constant; gated on API 31 below.
-    private suspend fun selectProvider(manager: LocationManager): String? {
+    private suspend fun selectProvider(manager: LocationManager, purpose: Purpose): String? {
         val preference = getSetting(
             latestContext,
             backgroundLocation,
@@ -391,14 +405,21 @@ class LocationSensorManager :
         )
 
         val available = manager.allProviders ?: emptySet()
+        val fused = LocationManager.FUSED_PROVIDER.takeIf { SdkVersion.isAtLeast(Build.VERSION_CODES.S) }
         val candidates = when (preference) {
             PROVIDER_GPS -> listOf(LocationManager.GPS_PROVIDER)
-            PROVIDER_NETWORK -> listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
-            else -> listOfNotNull(
-                LocationManager.FUSED_PROVIDER.takeIf { SdkVersion.isAtLeast(Build.VERSION_CODES.S) },
-                LocationManager.NETWORK_PROVIDER,
-                LocationManager.GPS_PROVIDER,
-            )
+            PROVIDER_NETWORK ->
+                if (purpose == Purpose.ACCURATE) {
+                    listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+                } else {
+                    listOfNotNull(fused, LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+                }
+
+            else -> if (purpose == Purpose.ACCURATE) {
+                listOfNotNull(fused, LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            } else {
+                listOfNotNull(fused, LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+            }
         }
         return candidates.firstOrNull { available.contains(it) }
             .also { selected ->
@@ -420,7 +441,7 @@ class LocationSensorManager :
             Timber.w("LocationManager is unavailable on this device")
             return
         }
-        val provider = selectProvider(manager) ?: return
+        val provider = selectProvider(manager, Purpose.BACKGROUND) ?: return
 
         val intervalSeconds = getSetting(
             latestContext,
@@ -861,58 +882,19 @@ class LocationSensorManager :
         val now = System.currentTimeMillis()
 
         Timber.d("Evaluating whether to send this location update")
-        if (now + 5000 < location.time) {
-            Timber.d("Skipping location update from the future: ${now + 5000} should exceed ${location.time}")
-            logLocationUpdate(
-                location,
-                updateLocation,
-                serverId,
-                trigger,
-                LocationHistoryItemResult.SKIPPED_FUTURE,
-            )
-            return
-        }
-
         val lastSend = synchronized(stateLock) { lastLocationSend[serverId] ?: 0L }
-        if (location.time < lastSend) {
-            Timber.d("Skipping old location update, received ${location.time} last sent $lastSend")
-            logLocationUpdate(
-                location,
-                updateLocation,
-                serverId,
-                trigger,
-                LocationHistoryItemResult.SKIPPED_NOT_LATEST,
-            )
-            return
-        }
-
-        if (now - location.time > FRESH_LOCATION_WINDOW_MS) {
-            Timber.d("Skipping location update due to old timestamp ${location.time} compared to $now")
-            logLocationUpdate(location, updateLocation, serverId, trigger, LocationHistoryItemResult.SKIPPED_OLD)
-            return
-        }
-
         val lastSentString = synchronized(stateLock) { lastUpdateLocation[serverId] }
-        if (updateLocationString == lastSentString && now < lastSend + DUPLICATE_LOCATION_WINDOW_MS) {
-            Timber.d("Duplicate location received, not sending to HA")
-            logLocationUpdate(
-                location,
-                updateLocation,
-                serverId,
-                trigger,
-                LocationHistoryItemResult.SKIPPED_DUPLICATE,
-            )
-            return
-        }
-        if (trigger?.isGeofence != true && now < lastSend + LOCATION_SEND_DEBOUNCE_MS) {
-            Timber.d("New location update not possible within 5 seconds, not sending to HA")
-            logLocationUpdate(
-                location,
-                updateLocation,
-                serverId,
-                trigger,
-                LocationHistoryItemResult.SKIPPED_DEBOUNCE,
-            )
+        val skip = LocationSendGate.skipReason(
+            now = now,
+            locationTime = location.time,
+            lastSend = lastSend,
+            lastUpdateString = lastSentString,
+            updateLocationString = updateLocationString,
+            isGeofence = trigger?.isGeofence == true,
+        )
+        if (skip != null) {
+            Timber.d("Skipping location update: $skip (last send $lastSend, fix time ${location.time})")
+            logLocationUpdate(location, updateLocation, serverId, trigger, skip.historyResult())
             return
         }
 
@@ -952,6 +934,15 @@ class LocationSensorManager :
                 LocationHistoryItemResult.FAILED_SEND,
             )
         }
+    }
+
+    /** Maps a gate decision onto the history enum that the developer-settings screen labels. */
+    private fun LocationSendGate.Skip.historyResult(): LocationHistoryItemResult = when (this) {
+        LocationSendGate.Skip.FUTURE -> LocationHistoryItemResult.SKIPPED_FUTURE
+        LocationSendGate.Skip.NOT_LATEST -> LocationHistoryItemResult.SKIPPED_NOT_LATEST
+        LocationSendGate.Skip.OLD -> LocationHistoryItemResult.SKIPPED_OLD
+        LocationSendGate.Skip.DUPLICATE -> LocationHistoryItemResult.SKIPPED_DUPLICATE
+        LocationSendGate.Skip.DEBOUNCE -> LocationHistoryItemResult.SKIPPED_DEBOUNCE
     }
 
     private suspend fun getSendLocationAsSetting(serverId: Int): String =
@@ -1042,7 +1033,7 @@ class LocationSensorManager :
      */
     private suspend fun currentAccurateLocation(minAccuracy: Int = DEFAULT_MINIMUM_ACCURACY): Location? {
         val manager = latestContext.getSystemService<LocationManager>() ?: return null
-        val provider = selectProvider(manager) ?: return null
+        val provider = selectProvider(manager, Purpose.ACCURATE) ?: return null
 
         val wakeLock = latestContext.getSystemService<PowerManager>()
             ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HomeAssistant::AccurateLocation")
