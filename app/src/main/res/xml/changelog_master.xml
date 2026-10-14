@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <changelog xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingDefaultResource">
-    <release version="2026.6.6 - Main" versioncode="3">
-        <change>Bug fixes and dependency updates</change>
-    </release>
-    <release version="2026.6.6 - Wear" versioncode="2">
-        <change>Bug fixes and dependency updates</change>
-    </release>
-    <release version="2026.6.6 - Automotive" versioncode="1">
-        <change>Bug fixes and dependency updates</change>
+    <release version="0.1.0" versioncode="1">
+        <change>首个独立版本：基于 Home Assistant 官方 Android 客户端，继承 nesror 国内适配版的思路并重做。</change>
+        <change>内置更新弹窗（公众号导流 / GitHub APK 自更新）已移除，安装渠道只有本仓库的 Release。</change>
+        <change>定位重写为纯系统实现，不再依赖 Google Play 服务：修复了后台定位监听器只注册不注销导致的耗电与位置冻结。</change>
+        <change>恢复“仅上报区域”隐私开关：之前该开关失效，勾选后仍会上报精确经纬度。</change>
+        <change>恢复区域进出事件、定位去重与防抖、定位历史（开发者选项里的“位置跟踪”页面重新有数据）。</change>
+        <change>设置项新增：定位来源（自动 / 仅网络 / 仅 GPS）、更新间隔、最小距离、区域进出唤醒。</change>
+        <change>崩溃与分析数据不再上报到任何第三方 Firebase 项目。</change>
+        <change>内置简体中文界面文案。</change>
     </release>
 </changelog>

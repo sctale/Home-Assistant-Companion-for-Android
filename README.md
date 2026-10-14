@@ -1,69 +1,154 @@
-# Home Assistant官方app适配国内环境版! 
-[![version](https://img.shields.io/github/v/release/nesror/Home-Assistant-Companion-for-Android?display_name=tag)](https://github.com/nesror/Home-Assistant-Companion-for-Android/releases/latest)
-[![stars](https://img.shields.io/github/stars/nesror/Home-Assistant-Companion-for-Android)](https://github.com/nesror/Home-Assistant-Companion-for-Android/stargazers)
-[![issues](https://img.shields.io/github/issues/nesror/Home-Assistant-Companion-for-Android)](https://github.com/nesror/Home-Assistant-Companion-for-Android/issues)
-![visit](https://visitor-badge.glitch.me/badge?page_id=nesror.Home-Assistant-Companion-for-Android&left_text=visit)
-[![Build and Release apk](https://github.com/nesror/android/workflows/Build%20and%20Release%20apk/badge.svg)](https://github.com/nesror/Home-Assistant-Companion-for-Android/actions/workflows/main.yml)
+# Home Assistant Companion · 无 GMS 版
 
-### 公众号  
-关注公众号及时获取最新版，各种使用技巧以及Hass的新奇玩法(回复 最新版 可以获取最新版的下载地址,也可以回复HA获取HomeAssistant全新Flutter版APP)  
-<img src="gzh.png" height="120"/>
-## 全新Flutter版APP：
-* [SmartHouse](https://github.com/nesror/SmartHouse)
+国内可用的 Home Assistant 安卓客户端构建。**不依赖 Google Play 服务**，因此可以在没有 GMS 的国产 ROM
+上真正上报位置；同时修掉了上一版定制包导致的耗电与位置冻结问题。
 
-## [使用方法](https://mp.weixin.qq.com/s?__biz=MzIzOTU5NTEwMQ==&mid=2247483691&idx=1&sn=503ee797e03a1227539e5aa36144a2af&chksm=e926fa19de51730f5a26d3050675c4e04bd90497fd2bb2a614451d8fdf8f3c97ac478bfab36d#rd)：
-* [APP使用](https://www.bilibili.com/video/BV18W4y1p7mk)
-* [推送通知](https://www.bilibili.com/video/BV18T411C7LE/)
-* [地理围栏](https://www.bilibili.com/video/BV1HD4y1v7r4) 
-* [快捷开关，快捷方式，小部件](https://www.bilibili.com/video/BV1524y1q7gE/)
+应用包名 `dev.sctale.homeassistant.companion.minimal`，与官方客户端和原定制包**互不覆盖**，可以并存安装。
 
-<!--
-* 欢迎捐赠，以便地理编码功能可以持续服务   
+---
 
- <img src="ali.png" height="300"/> <img src="wx.jpeg" height="300"/>
- -->
+## 源头与致谢
 
-（适合没有gms服务或谷歌服务受限的用）同时修复官方app的UA问题，导致部分前端组件异常（如 高德地图）
+这个项目完全建立在两份前人的工作之上，请知悉并且感谢它们：
 
-## Documentation
+**Home Assistant 官方团队 —— <https://github.com/home-assistant/android>**
+本仓库的全部代码来自官方 Android 客户端（Apache License 2.0）。应用的功能、架构、传感器体系、界面
+以及绝大多数测试都是官方的成果。我们只是重新实现了其中"定位"的一块，并做了安全性与工程化的清理。
+支持官方请去 [home-assistant.io](https://home-assistant.io) /
+[Discord](https://discord.gg/c5DvZ4e) / 官方仓库点 star 与贡献。
 
-Looking for help? Check out the [Home Assistant Companion Documentation](https://companion.home-assistant.io/) for detailed guides on using the app.
+**nesror —— <https://github.com/nesror/Home-Assistant-Companion-for-Android>**
+本仓库直接 fork 自这位作者的"Home Assistant 官方 app 适配国内环境版"（自 2021 年起维护，454 star，
+最后一个公开版本 `v2025-06-25`）。没有他这份先行工作，就不会有"国内设备拿不到位置"这个问题被提出，
+也不会有 GCJ-02 坐标偏移、无 GMS 设备定位兜底、中文界面文案这些方向。本文档下面列出的多数问题，
+恰恰是他这份实现帮我们踩出来的坑——这是有价值的贡献，不是过错。
 
-## Report a bug or request a feature
+我们的改动全部记录在 [CHANGELOG.md](CHANGELOG.md)，逐条对照见
+[docs/CHANGES-VS-UPSTREAM.md](docs/CHANGES-VS-UPSTREAM.md)。
 
-Found a bug or have an idea for a new feature? Let us know!  
+> 本仓库不是 Home Assistant 官方项目，也没有得到 Home Assistant 或 nesror 的背书。
+> 签名密钥与官方包不同，**无法覆盖安装**官方客户端或原定制包，需要各自独立安装。
 
-- **[Open a Bug Report](https://github.com/home-assistant/android/issues/new?template=Bug_report.md)**  
-- **[Request a Feature](https://github.com/home-assistant/android/issues/new?template=feature_request.md)**  
+---
 
-We appreciate your feedback and contributions to make the app even better!
+## 下载与安装
 
-## Contributing
+到 [Releases](../../releases) 下载 `ha-companion-minimal-v<版本>.apk`。
 
-We are thrilled to welcome contributions from the community! This app exists thanks to the incredible efforts of the Home Assistant community. Whether you're fixing bugs, adding new features, or improving documentation, your contributions make a difference.
+安装前请先读一遍下面"这个版本不包含什么"，确认符合你的预期。安装新的一般直接覆盖安装即可（同签名）；
+从官方包或原定制包迁移过来时需要先卸载旧的，因为包名与签名都不同。
 
-Every contribution, big or small, is greatly appreciated. Together, we can make the Home Assistant Companion for Android even better!
+签名证书 SHA-256 指纹（可用于核对安装包未被篡改）：
 
-### Getting started
+```
+88:C6:97:33:32:2F:8A:75:76:14:73:F6:E4:63:89:BD:A8:58:9B:32:D7:4E:70:87:90:65:EB:06:4D:1E:18:20
+```
 
-1. Read the [Developer Guide](https://developers.home-assistant.io/docs/android/).
-2. Fork the repository and create a branch for your changes.
-3. Submit a pull request and join the discussion!
+---
 
-## Join the community
+## 这个版本修好了什么
 
-Connect with other contributors and users in our vibrant **[Discord Community](https://discord.gg/c5DvZ4e)**: Join the **[#Android](https://discord.com/channels/330944238910963714/1346948551892009101)** channel to chat with developers and contributors.
+### 1. 耗电与位置冻结（最重要）
 
-## Star the repository
+旧版每 2 分钟订阅一次 GPS，但监听器**只注册、从不注销**，而且注册时会命中一条"后台定位停摆"的自愈
+判断——由于判断依赖的那张表永远是空的，每次自愈都会再注册一个新的监听器。一天下来能积累近百个 GPS
+监听器，每个 GPS 定位都会在主线程上依次触发数据库读写、地理编码和 HTTPS 上报。表现就是持续发热、
+越来越费电、界面卡顿，同时上报的位置又重复又延迟。
 
-If you find this project useful, consider giving it a star on GitHub!  
-It helps others discover the project and motivates us to keep improving.
+现在：订阅统一走一个稳定的 `PendingIntent`（系统按句柄去重，重复订阅等于替换而不是叠加），
+注销路径与注册路径一一配对，所有工作移出主线程。默认策略改为优先使用省电的网络定位、
+15 分钟节奏、允许平台批量投递定位结果。
 
-<a href="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history?repo_id=179008173" target="_blank" style="display: block" align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=179008173&image_size=auto&color_scheme=dark" width="721" height="auto">
-    <img alt="Star History of home-assistant/android" src="https://next.ossinsight.io/widgets/official/analyze-repo-stars-history/thumbnail.png?repo_id=179008173&image_size=auto&color_scheme=light" width="721" height="auto">
-  </picture>
-</a>
+### 2. "仅上报区域"隐私开关
 
-[![Home Assistant - A project from the Open Home Foundation](https://www.openhomefoundation.org/badges/home-assistant.png)](https://www.openhomefoundation.org/)
+旧版在设置里保留了这个开关，但上报代码里坐标是硬编码的——**勾选"只上报区域、不要我的坐标"之后，
+实际发出去的仍是精确经纬度**。现在该开关按官方语义生效：选"仅区域"时坐标字段为 `null`，
+只发送区域名称。
+
+这是一条隐私承诺层面的修正，优先级高于其它所有改动。
+
+### 3. 被删掉的上游能力
+
+旧版一次性注释掉了地理围栏、区域进入/退出事件、单次精确定位、定位去重与防抖、定位历史（开发者选项里
+"位置跟踪"页面永远是空的）。这些现在都恢复了，其中区域相关能力改用系统 API 实现（原因见下）。
+
+### 4. 崩溃风险
+
+旧版在地理编码回调里直接取 `it[0]`，而在没有 GMS 的设备上这个列表**经常是空的**——恰好是该版本主要
+服务的用户。已修正为先判空。同时不再每次定位都无条件发起一次地理编码查询。
+
+### 5. 供应链与数据流向
+
+- 不再内置任何人的 Firebase 项目配置。旧版把崩溃日志与分析数据上报到作者个人的 Firebase 项目。
+- 不再把签名密钥文件提交进仓库。
+- 删除了整条不可达的自更新代码链（约 600 行）以及它带来的 `REQUEST_INSTALL_PACKAGES` 权限、
+  导出广播接收器、过宽的 `FileProvider` 根路径、进程级 StrictMode 清空。
+- 关闭了应用级明文 HTTP 开关。
+- 删除了高德 SDK 的死代码残留（依赖已被注释、坐标转换文件仍在但零调用、清单里还声明着不存在的组件）。
+
+---
+
+## 这个版本不包含什么
+
+诚实列出限制，避免安装后才踩坑：
+
+**没有推送通知。** 官方客户端的推送依赖 Firebase Cloud Messaging，而 FCM 依赖 Google Play 服务。
+本版本为了在无 GMS 设备上工作，选择彻底不链接 FCM。Home Assistant 的 `notify.mobile_app_*`
+服务在本版本上不可用。需要推送的话，请使用官方客户端。
+
+**没有"高精度模式"。** 官方的高精度模式建立在 Play 服务的融合定位与前台服务上，无 GMS 场景下没有
+对应实现，因此不提供该传感器，而不是留一个空壳让你误以为生效。
+
+**区域判断不是真正的系统围栏。** 这一点需要解释：`Geofence`、`GeofencingRequest`、
+`LocationManager.addGeofences` 这些 API **不在公开的 Android SDK 里**——它们只随 Google Play 服务
+发布，framework 侧的同类接口既非公开也已被移除。所以在没有 GMS 的设备上，系统级围栏根本无法申请。
+
+本版本的做法是：在每次后台定位时**计算**当前落在哪些区域内（沿用官方的半径排序 + 同半径时按区域中心
+距离打破平局的规则），据此产生 `android.zone_entered` / `android.zone_exited` 事件和区域状态。
+另外提供一个可选开关，用公开的 `addProximityAlert` 作为额外的唤醒来源，让边界穿越能在两次定位之间
+被及时响应；该接口是否被底层支持取决于机型，不支持时只是响应慢一点，正确性不受影响。
+
+代价是：区域事件的及时性取决于定位节奏，而不是官方的秒级围栏回调。
+
+**中文界面不完整。** 内置约 1000 条简体中文文案（覆盖官方字符串的 68%），其余回退英文。
+旧版曾把中文文案直接写进默认（英文）资源目录，导致所有语言的用户都看到中文，已修正为放在
+`values-zh-rCN/`。
+
+**不再自动检查更新。** 需要自己到 Releases 下载新 APK。带外 APK 自更新链的安全性无法保证，
+宁可不做。
+
+---
+
+## 定位相关的设置项
+
+在"传感器 → 位置信息"下，本版本新增了几项可调设置（默认值以省电为先）：
+
+| 设置 | 默认 | 说明 |
+| --- | --- | --- |
+| 定位来源 | 自动 | 自动优先网络定位（省电），可强制仅网络或仅 GPS |
+| 定位更新间隔 | 900 秒 | 后台定位节奏；调小更及时但更费电 |
+| 两次更新的最小距离 | 100 米 | 位移小于该值不产生回调 |
+| 定时更新之间也响应进出区域 | 关 | 启用后尝试用系统临近提醒做边界唤醒 |
+| 最低精度 | 200 米 | 精度差于该值的定位被丢弃并记入定位历史 |
+
+排查"位置不动了"时，请打开 开发者选项 → 位置跟踪，那里会记录每次定位是被发送了、被去重了、
+还是因精度被丢弃了。
+
+---
+
+## 自行构建
+
+```bash
+scripts/verify.sh                      # 代码风格 + 测试 + Lint + 构建
+scripts/build-release.sh 0.1.0 100     # 产出签名的 release APK
+```
+
+需要 JDK 17+ 与 Android SDK Platform 37。签名材料放在 `keystore/signing.env`（已被 git 忽略，
+**不要提交**）；仓库里不含任何密钥。构建 `full` flavor（带 FCM 推送）需要自己提供
+`app/google-services.json`，`minimal` flavor 使用一份无凭据的占位配置，克隆下来即可直接构建。
+
+---
+
+## 许可
+
+Apache License 2.0，与上游一致。见 [LICENSE.md](LICENSE.md) 与 [NOTICE](NOTICE)。

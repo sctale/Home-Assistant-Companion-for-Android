@@ -1,0 +1,34 @@
+Home Assistant Companion for Android — unofficial Google-services-free build
+Copyright (c) Home Assistant authors. Licensed under the Apache License, Version 2.0.
+Portions Copyright (c) nesror, from the upstream fork this project was branched from.
+
+This product includes software developed at
+The Home Assistant project (https://www.home-assistant.io/).
+
+## Statement of changes
+
+This is a modified derivative of `home-assistant/android`, obtained via the fork
+`nesror/Home-Assistant-Companion-for-Android`. Modifications were made in October 2026 and are
+identified by the commit history of this repository; a human-readable summary of every deviation
+from upstream is kept in `docs/CHANGES-VS-UPSTREAM.md` and `CHANGELOG.md`.
+
+Notable modifications relative to upstream:
+
+  - The location sensor is reimplemented for the `minimal` product flavour using only public
+    `android.location` APIs, because platform geofencing (`Geofence`, `LocationManager.addGeofences`)
+    is not part of the public Android SDK and exists only inside Google Play services.
+  - The `full` flavour is retained but is not published from this repository.
+  - The application id, signing key and product name differ from upstream.
+  - Firebase Cloud Messaging, Crashlytics and the upstream crash-reporting backends are not enabled:
+    no telemetry of this build is delivered to any third-party project.
+  - The in-app "check for updates" / APK self-install path present in the fork this project branched
+    from has been removed entirely.
+
+This file is provided in the sense of Apache-2.0 §4(b) ("notices that such changes were made").
+It does not replace the upstream license; see `LICENSE.md`.
+
+## Third-party notices
+
+This distribution bundles third-party open-source work. Upstream enumerates their copyright notices
+and licenses in the application's "Open source licenses" screen, generated at build time by the
+AboutLibraries plugin; those notices are preserved unmodified.
