@@ -1,10 +1,8 @@
 package io.homeassistant.companion.android
 
-import android.annotation.SuppressLint
 import android.app.Application
 import android.app.NotificationManager
 import android.bluetooth.BluetoothAdapter
-import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
@@ -12,7 +10,6 @@ import android.net.wifi.WifiManager
 import android.nfc.NfcAdapter
 import android.os.Build
 import android.os.PowerManager
-import android.provider.Settings
 import android.telephony.TelephonyManager
 import android.webkit.WebView
 import androidx.core.content.ContextCompat
@@ -54,7 +51,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 import okhttp3.OkHttpClient
 import timber.log.Timber
 
@@ -383,25 +379,6 @@ open class HomeAssistantApplication :
             )
         }
         .build()
-
-    @SuppressLint("HardwareIds")
-    open fun getDeviceId(context: Context): String {
-        var deviceId = Settings.Secure.getString(
-            applicationContext.contentResolver,
-            Settings.Secure.ANDROID_ID,
-        )
-        if (!deviceId.isNullOrEmpty()) {
-            return deviceId
-        }
-
-        val prefs = context.getSharedPreferences("config", Context.MODE_PRIVATE)
-        deviceId = prefs.getString("uuid", null)
-        if (deviceId.isNullOrEmpty()) {
-            deviceId = UUID.randomUUID().toString()
-            prefs.edit().putString("uuid", deviceId).apply()
-        }
-        return deviceId
-    }
 
     /**
      * Enables WebView contents debugging and logs the current WebView package.

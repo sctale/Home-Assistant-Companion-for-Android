@@ -126,11 +126,6 @@ class NotificationSensorManager :
                 return@launch
             }
 
-            if (sbn.packageName == "com.huawei.systemmanager") {
-                cancelNotification(sbn.key)
-                return@launch
-            }
-
             val allowPackages = getSetting(
                 applicationContext,
                 lastNotification,
@@ -173,7 +168,6 @@ class NotificationSensorManager :
 
             // Attempt to use the text of the notification but fallback to package name if all else fails.
             val state = attrs["android.text"] ?: attrs["android.title"] ?: sbn.packageName
-            if (attrs["android.title"] == null && attrs["android.text"] == null) return@launch
 
             onSensorUpdated(
                 applicationContext,

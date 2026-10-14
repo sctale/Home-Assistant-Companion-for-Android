@@ -56,9 +56,7 @@ class HomeAssistantApis @Inject constructor(
                     .build(),
             )
         }
-        builder.addInterceptor(
-            RedirectInterceptor()
-        )
+
         val isWear = appContext.packageManager.hasSystemFeature(PackageManager.FEATURE_WATCH)
         if (!isWear) {
             var cookieManager: CookieManager? = null
