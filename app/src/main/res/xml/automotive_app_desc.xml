@@ -1,3 +1,10 @@
-<automotiveApp>
-    <uses name="template" />
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Used from two places that a single-variant lint run cannot both see: the `full` flavour manifest of
+  :app, and the main manifest of the :automotive module (whose source set includes this directory).
+  Lint therefore reports it as unused when analysing the `minimal` flavour of :app. It is not.
+-->
+<automotiveApp xmlns:tools="http://schemas.android.com/tools"
+    tools:ignore="UnusedResources">
+    <name data="tablecar" />
 </automotiveApp>

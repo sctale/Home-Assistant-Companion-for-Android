@@ -1,6 +1,7 @@
 package io.homeassistant.companion.android.sensors
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -13,6 +14,7 @@ import android.os.Build
 import android.os.Looper
 import android.os.PowerManager
 import androidx.core.content.IntentCompat
+import androidx.core.content.edit
 import androidx.core.content.getSystemService
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -377,6 +379,7 @@ class LocationSensorManager :
      * The provider choice is a single policy owned by `location_background` and applied to every
      * location request, rather than a per-sensor setting the user would have to keep in sync.
      */
+    @SuppressLint("InlinedApi") // FUSED_PROVIDER is an inlined String constant; gated on API 31 below.
     private suspend fun selectProvider(manager: LocationManager): String? {
         val preference = getSetting(
             latestContext,
@@ -567,7 +570,10 @@ class LocationSensorManager :
             latestContext,
             proximityRequestCode(zoneKey),
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            // FLAG_MUTABLE is required, not incidental: the platform injects the
+            // KEY_PROXIMITY_ENTERING extra into this intent when the alert fires. An immutable intent
+            // would silently deliver entering=false forever.
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
         )
     }
 
@@ -590,7 +596,7 @@ class LocationSensorManager :
         .filter { it.isNotBlank() }
 
     private fun persistRegisteredAlerts(keys: List<String>) {
-        preferences().edit().putString(PREF_REGISTERED_ALERTS, keys.joinToString("\n")).apply()
+        preferences().edit { putString(PREF_REGISTERED_ALERTS, keys.joinToString("\n")) }
     }
 
     private suspend fun handleLocationUpdate(intent: Intent) {
@@ -680,6 +686,10 @@ class LocationSensorManager :
         val changed = mutableListOf<Pair<Int, String>>() // serverId to entityId
         val previousZones = mutableMapOf<Int, Set<String>>()
         val currentZones = mutableMapOf<Int, Set<String>>()
+        // Servers with no baseline yet (first evaluation after install or process death). Diffing
+        // against "nothing" would report every zone we happen to be inside as just-entered, and a
+        // spurious android.zone_entered fires the user's "arrived home" automations.
+        val unbaselined = mutableSetOf<Int>()
 
         enabledServers.forEach { serverId ->
             val zoneList = try {
@@ -699,12 +709,21 @@ class LocationSensorManager :
                         .thenBy { distanceToZoneCenter(location, it) },
                 ).mapTo(mutableSetOf()) { it.entityId }
 
-            previousZones[serverId] = synchronized(stateLock) { lastInZones[serverId] ?: emptySet() }
+            val baseline = synchronized(stateLock) { lastInZones[serverId] }
             synchronized(stateLock) { lastInZones[serverId] = inside }
             currentZones[serverId] = inside
 
-            (inside - previousZones.getValue(serverId)).forEach { changed.add(serverId to it) }
-            (previousZones.getValue(serverId) - inside).forEach { changed.add(serverId to it) }
+            if (baseline == null) {
+                unbaselined.add(serverId)
+                return@forEach
+            }
+
+            (inside - baseline).forEach { changed.add(serverId to it) }
+            (baseline - inside).forEach { changed.add(serverId to it) }
+        }
+
+        if (unbaselined.isNotEmpty()) {
+            Timber.d("Seeding zone baseline for ${unbaselined.joinToString()}, no events reported")
         }
 
         changed.forEach { (serverId, entityId) ->

@@ -101,6 +101,17 @@
                 android:value=""/>
         </service>
 
+        <!-- Declared here rather than in the main manifest: the class only exists in this
+             flavour, so keeping it in main produced a component pointing at a missing class. -->
+        <service android:name=".onboarding.WearOnboardingListener"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data android:scheme="wear" android:host="*"
+                    android:path="/request_home_assistant_instance" />
+            </intent-filter>
+        </service>
         <service android:name=".data.wear.WearDnsRequestListener" android:exported="true"
             tools:ignore="ExportedService">
             <intent-filter>

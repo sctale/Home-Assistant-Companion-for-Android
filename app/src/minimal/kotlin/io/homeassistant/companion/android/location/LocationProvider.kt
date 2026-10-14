@@ -51,6 +51,7 @@ suspend fun getLastLocation(context: Context): Location? {
     }
 }
 
+@RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
 private suspend fun LocationManager.getCurrentLocation(context: Context): Location? {
     return suspendCoroutine {
         LocationManagerCompat.getCurrentLocation(
