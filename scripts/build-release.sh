@@ -9,15 +9,15 @@
 #   scripts/build-release.sh <versionCode>
 #   scripts/build-release.sh 1
 #
-# The version *name* comes from git, not from an argument: the reckon plugin derives it from the
-# tag on HEAD. So the release flow is "commit, tag, build" - this script refuses to run on a tagless
-# or dirty commit, because an APK that advertises 0.0.1-SNAPSHOT is not a release artifact.
+# The version *name* is not an argument - it comes from git, derived from the tag on HEAD by the
+# reckon plugin. So the release flow is "commit, tag, build", and this script refuses to run on an
+# untagged or dirty commit: an APK whose versionName reads 0.1.0-SNAPSHOT is not a release artifact.
 #
 # Signing material is read from keystore/signing.env (git-ignored, never commit it):
-#   KEYSTORE_PATH keystore/release.keystore
-#   KEYSTORE_PASSWORD ...
-#   KEYSTORE_ALIAS ...
-#   KEYSTORE_ALIAS_PASSWORD ...   (defaults to KEYSTORE_PASSWORD)
+#   KEYSTORE_PATH=keystore/release.keystore      (relative paths resolve against the repo root)
+#   KEYSTORE_PASSWORD=...
+#   KEYSTORE_ALIAS=...
+#   KEYSTORE_ALIAS_PASSWORD=...                  (defaults to KEYSTORE_PASSWORD)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -49,19 +49,37 @@ APK="app/build/outputs/apk/minimal/release/app-minimal-release.apk"
 
 BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
 
+# The SDK ships these as .bat launchers on Windows and as extension-less scripts elsewhere.
+resolve_tool() {
+  for candidate in "$BUILD_TOOLS/$1" "$BUILD_TOOLS/$1.bat" "$BUILD_TOOLS/$1.exe"; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  echo "No '$1' (nor .bat/.exe) found under $BUILD_TOOLS" >&2
+  exit 1
+}
+APKSIGNER="$(resolve_tool apksigner)"
+AAPT2="$(resolve_tool aapt2)"
+
 echo
 echo "==> Package identity"
-"$BUILD_TOOLS/aapt2" dump badging "$APK" 2>/dev/null |
-  grep -E "^package:|sdkVersion:|targetSdkVersion:|application-label" |
+"$AAPT2" dump badging "$APK" 2>/dev/null |
+  grep -E "^package:|sdkVersion:|targetSdkVersion:|^application-label:'" |
   sed 's/^/  /'
 
 echo "==> Signing"
-"$BUILD_TOOLS/apksigner" verify --print-certs "$APK" 2>&1 | sed 's/^/  /'
+# The "META-INF/... not protected by signature" notes are emitted for every APK that AGP signs under
+# v1+v2, so they are filtered out rather than silenced wholesale: anything else this command prints
+# is worth reading.
+"$APKSIGNER" verify --print-certs "$APK" 2>/dev/null |
+  grep -vE "^WARNING: META-INF" | sed 's/^/  /'
 
-# A release must never be signed by the debug key: it would be uninstallable over a real release and
-# would silently change the trust root of every install.
-if "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" 2>&1 | grep -qi "Android Debug"; then
-  echo "ERROR: artifact is signed with a debug key." >&2
+# A release must never be signed with the debug key: it would be uninstallable over a real release
+# and would silently change the trust root of every install.
+if "$APKSIGNER" verify --print-certs "$APK" 2>/dev/null | grep -qi "Android Debug"; then
+  echo "ERROR: the artifact is signed with a debug key." >&2
   exit 1
 fi
 

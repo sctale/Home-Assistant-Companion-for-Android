@@ -382,3 +382,6 @@ merged_results.sarif
 # This project's release signing material. The key store and its password must never be
 # committed: an APK signed with a published key can be overwritten onto every installed device.
 keystore/
+
+# Local build output copied out by scripts/build-release.sh.
+release/
