@@ -1,19 +1,22 @@
 @echo off
 chcp 65001 >nul
-rem 发布 v0.1.0 到 GitHub：推送 master 与 tag，再创建 Release 并上传已签名 APK。
-rem 这一步需要仓库所有者本人执行：自动化环境被本机策略禁止对外网写入。
+rem ASCII only on purpose: cmd parses .bat in the OEM codepage, and non-ASCII bytes here break
+rem line parsing. Human-readable output lives in scripts/publish-release.sh (UTF-8, run by bash).
 setlocal
 cd /d "%~dp0"
-where bash >nul
-if errorlevel 1 (
-    echo 未找到 bash。请安装 Git for Windows，或直接执行：
+
+set "BASH="
+if exist "C:\Program Files\Gitinash.exe" set "BASH=C:\Program Files\Gitinash.exe"
+if not defined BASH for /f "delims=" %%i in ('where bash 2^>nul') do if not defined BASH set "BASH=%%i"
+if not defined BASH (
+    echo bash.exe not found. Install Git for Windows, or run:
     echo     bash scripts/publish-release.sh
     exit /b 1
 )
-bash scripts/publish-release.sh %*
-set RC=%ERRORLEVEL%
+
+"%BASH%" scripts/publish-release.sh %*
+set "RC=%ERRORLEVEL%"
+if "%~1"=="--yes" exit /b %RC%
 echo.
-if "%1"=="--yes" goto :eof
 pause
-:eof
 exit /b %RC%
