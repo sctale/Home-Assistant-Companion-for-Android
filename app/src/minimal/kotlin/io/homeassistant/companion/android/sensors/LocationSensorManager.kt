@@ -404,7 +404,7 @@ class LocationSensorManager :
             entries = listOf(PROVIDER_AUTO, PROVIDER_NETWORK, PROVIDER_GPS),
         )
 
-        val available = manager.allProviders ?: emptySet()
+        val available = manager.allProviders
         val fused = LocationManager.FUSED_PROVIDER.takeIf { SdkVersion.isAtLeast(Build.VERSION_CODES.S) }
         val candidates = when (preference) {
             PROVIDER_GPS -> listOf(LocationManager.GPS_PROVIDER)
@@ -598,16 +598,8 @@ class LocationSensorManager :
         )
     }
 
-    private fun getLocationUpdateIntent(action: String): PendingIntent {
-        val intent = Intent(latestContext, LocationSensorManager::class.java).apply { this.action = action }
-        return PendingIntent.getBroadcast(
-            latestContext,
-            action.hashCode(),
-            intent,
-            // The platform fills in the location extra, so the intent must stay mutable.
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-        )
-    }
+    private fun getLocationUpdateIntent(action: String): PendingIntent =
+        LocationSubscriptions.pendingIntent(latestContext, action)
 
     private fun preferences() = latestContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
@@ -773,13 +765,15 @@ class LocationSensorManager :
         if (!isEnabled(latestContext, zoneLocation, serverId)) return
 
         val zoneStatusEvent = if (entering) "android.zone_entered" else "android.zone_exited"
-        val zoneAttr = mapOf(
+        // Typed as Map<String, Any> so the map can be handed to fireEvent without an unchecked cast;
+        // `provider` is the one field the platform declares as nullable.
+        val zoneAttr: Map<String, Any> = mapOf(
             "accuracy" to location.accuracy,
             "altitude" to location.altitude,
             "bearing" to location.bearing,
             "latitude" to location.latitude,
             "longitude" to location.longitude,
-            "provider" to location.provider,
+            "provider" to (location.provider ?: "unknown"),
             "time" to location.time,
             "vertical_accuracy" to if (SdkVersion.isAtLeast(Build.VERSION_CODES.O)) {
                 location.verticalAccuracyMeters.toInt()
@@ -791,7 +785,7 @@ class LocationSensorManager :
 
         try {
             serverManager(latestContext).integrationRepository(serverId)
-                .fireEvent(zoneStatusEvent, zoneAttr as Map<String, Any>)
+                .fireEvent(zoneStatusEvent, zoneAttr)
             Timber.d("Zone event sent to Home Assistant: $zoneStatusEvent for $entityId")
         } catch (e: Exception) {
             Timber.e(e, "Unable to send zone event to Home Assistant")
