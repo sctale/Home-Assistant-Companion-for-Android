@@ -45,8 +45,6 @@
             </intent-filter>
         </service>
 
-        <service android:name="com.amap.api.location.APSService" />
-
         <service
             android:name=".location.HighAccuracyLocationService"
             android:enabled="true"
@@ -71,8 +69,6 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/colorPrimary" />
-
-        <!--        io.homeassistant.companion.android-->
 
         <meta-data
             android:name="androidx.car.app.minCarApiLevel"

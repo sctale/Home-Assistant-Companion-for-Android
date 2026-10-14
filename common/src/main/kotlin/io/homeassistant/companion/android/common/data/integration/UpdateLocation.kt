@@ -16,6 +16,4 @@ data class UpdateLocation(
     val altitude: Int?,
     val course: Int?,
     val verticalAccuracy: Int?,
-    val time: Long?,
-    val gpsTime: Long?
 )

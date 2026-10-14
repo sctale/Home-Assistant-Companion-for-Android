@@ -97,8 +97,6 @@ webkit = "1.15.0"
 wear-remote-interactions = "1.2.0"
 work = "2.11.2"
 zxing = "4.3.0"
-firebase="3.0.1"
-
 
 [plugins]
 aboutlibraries = { id = "com.mikepenz.aboutlibraries.plugin.android", version.ref = "aboutlibraries" }
@@ -113,7 +111,6 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint" }
-firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebase" }
 screenshot = { id = "com.android.compose.screenshot", version.ref = "screenshot" }
 
 # Plugins defined by this project in `:build-logic:convention` module.
@@ -270,9 +267,6 @@ wear-tiles = { module = "androidx.wear.tiles:tiles", version.ref = "wear-tiles" 
 wear-tooling = { module = "androidx.wear:wear-tooling-preview", version.ref = "wear-tooling" }
 webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
 zxing = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxing" }
-crashlytics = { module = "com.google.firebase:firebase-crashlytics-ktx" }
-analytics = { module = "com.google.firebase:firebase-analytics" }
-amap = "com.amap.api:location:6.1.0"
 
 [bundles]
 androidx-test =["androidx-test-core", "androidx-test-espresso-core", "androidx-test-ext", "androidx-test-rules", "androidx-test-runner"]

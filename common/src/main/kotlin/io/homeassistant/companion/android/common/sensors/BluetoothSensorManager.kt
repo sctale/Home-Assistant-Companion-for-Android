@@ -25,7 +25,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-public class BluetoothSensorManager : SensorManager {
+class BluetoothSensorManager : SensorManager {
     companion object {
 
         const val SETTING_BLE_ID1 = "ble_uuid"

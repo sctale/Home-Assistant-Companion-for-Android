@@ -1,7 +1,6 @@
 package io.homeassistant.companion.android.settings
 
 import android.app.UiModeManager
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -9,9 +8,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
-import android.widget.EditText
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.getSystemService
@@ -160,24 +157,6 @@ class SettingsFragment(
                 replace(R.id.content, SensorSettingsFragment::class.java, null)
                 addToBackStack(getString(commonR.string.sensors))
             }
-            return@setOnPreferenceClickListener true
-        }
-        findPreference<Preference>("amapKey")?.setOnPreferenceClickListener {
-            val amapKey = context?.getSharedPreferences("config", Context.MODE_PRIVATE)?.getString("amapKey", "")
-            val editText = EditText(requireActivity())
-            editText.setText(amapKey)
-            AlertDialog.Builder(requireActivity())
-                .setTitle("你自己的高德地图Android Key")
-                .setView(editText)
-                .setMessage(
-                    "换回直接调用系统gps请清空后点击确定\n不建议使用，新版本不使用高德也已经可以获取地理位置信息了\n不保证可用，高德可能会封包名\n包名：io.homeassistant.companion.android\nHSA1: 52:7D:B7:46:44:F9:BB:AE:B5:7F:B1:07:78:AC:AE:58:B3:A4:30:56\n",
-                )
-                .setPositiveButton("确定") { _, _ ->
-                    context?.getSharedPreferences("config", Context.MODE_PRIVATE)?.edit()
-                        ?.putString("amapKey", editText.text.toString())
-                        ?.apply()
-                }
-                .show()
             return@setOnPreferenceClickListener true
         }
         findPreference<Preference>("sensor_update_frequency")?.let {
