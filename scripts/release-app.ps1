@@ -61,7 +61,10 @@ try {
   $appName = 'ha-companion-minimal'
   $repo    = 'sctale/Home-Assistant-Companion-for-Android'
   $branch  = 'master'
-  $appId   = 'dev.sctale.homeassistant.companion'
+  # 产物身份带 minimal flavor 的后缀（AndroidFullMinimalFlavorConventionPlugin：
+  # applicationIdSuffix ".minimal" / versionNameSuffix "-minimal"），照实校验，不要写成基础包名。
+  $appId        = 'dev.sctale.homeassistant.companion.minimal'
+  $flavorSuffix = '-minimal'
 
   $gh = 'C:\Program Files\GitHub CLI\gh.exe'
   if (-not (Test-Path $gh)) {
@@ -119,7 +122,9 @@ try {
   # versionName 由 git tag 推导（reckon 插件），所以顺序只能是「提交 → 打 tag → 构建」；
   # tag 不在 HEAD 上就会发出一个自称 vX.Y.Z、实际是别处代码的 APK。
   Step "校验 / 创建 tag $tag"
-  $existing = (& git rev-parse --verify --quiet "refs/tags/$tag" 2>$null)
+  # 注意取的是 tag 指向的**提交**：annotated tag（git tag -a）的 refs/tags/vX.Y.Z 是 tag 对象的 sha，
+  # 拿它和 HEAD 比会永远不等。
+  $existing = (& git rev-parse --verify --quiet "$tag^{commit}" 2>$null)
   if ($existing) {
     $existing = "$existing".Trim()
     if ($existing -ne $head) {
@@ -140,7 +145,7 @@ try {
     & git tag -a $tag -m $tag
     if ($LASTEXITCODE -ne 0) { Fail "git tag -a $tag 失败（exit $LASTEXITCODE）" }
     # 上一版的教训：tag 失败时 stderr 被吞掉，看起来像成功了。创建后必须回读确认。
-    $created = (& git rev-parse --verify "refs/tags/$tag" 2>$null)
+    $created = (& git rev-parse --verify "$tag^{commit}" 2>$null)
     $created = "$created".Trim()
     if ($created -ne $head) { Fail "打了 tag 但回读不是 HEAD（得到 $created）" }
     Write-Host "  已创建 $tag -> $($head.Substring(0,7))"
@@ -168,8 +173,8 @@ try {
   $pkgLine = ($badging -split "`n" | Where-Object { $_ -match '^package:' } | Select-Object -First 1)
   if (-not $pkgLine) { Fail 'aapt2 没有输出 package: 行。' }
   Write-Host "  $pkgLine" -ForegroundColor Gray
-  if ($pkgLine -notmatch [regex]::Escape("name='$appId'")) { Fail "包名不是 $appId —— 产物可能来自别的分支。" }
-  if ($pkgLine -notmatch [regex]::Escape("versionName='$Version'")) { Fail "versionName 校验失败（期望 $Version）。" }
+  if ($pkgLine -notmatch [regex]::Escape("name='$appId'")) { Fail "包名不是 $appId —— 产物可能来自别的分支或别的 flavor。" }
+  if ($pkgLine -notmatch [regex]::Escape("versionName='$Version$flavorSuffix'")) { Fail "versionName 校验失败（期望 $Version$flavorSuffix）。" }
   if ($pkgLine -notmatch [regex]::Escape("versionCode='$VersionCode'")) { Fail "versionCode 校验失败（期望 $VersionCode）。" }
 
   # ---------- 7. 签名校验：release 绝不允许 debug key ----------
