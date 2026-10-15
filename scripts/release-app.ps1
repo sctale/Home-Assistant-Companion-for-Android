@@ -219,7 +219,10 @@ try {
   Step "gh release（$tag）"
   & $gh release view $tag --repo $repo | Out-Null
   if ($LASTEXITCODE -eq 0) {
-    Write-Host "  Release $tag 已存在，上传/覆盖产物"
+    Write-Host "  Release $tag 已存在，同步标题与正文、再覆盖产物"
+    # 改了 CHANGELOG 小节之后跑 -PublishOnly，正文要真的同步过去，否则远端还是旧说明。
+    & $gh release edit $tag --repo $repo --title "$tag 无GMS版" --notes-file $notesFile
+    if ($LASTEXITCODE -ne 0) { Fail "更新 Release 正文失败（exit $LASTEXITCODE）。" }
     & $gh release upload $tag $apkCopy --clobber --repo $repo
     if ($LASTEXITCODE -ne 0) { Fail '产物上传失败。' }
   } else {
