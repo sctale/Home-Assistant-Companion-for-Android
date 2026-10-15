@@ -3,7 +3,16 @@
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## 0.1.0
+## [Unreleased]
+
+### 变更
+
+- 发布入口改为单个 PowerShell 脚本 `scripts/release-app.ps1`（根目录 `发布到GitHub.bat` 是它的
+  双击入口）：打 tag → 构建 → 校验包名/版本/签名 → 推送 → 建 Release，一条命令做完，
+  Release 正文直接取自本文件对应版本的小节。此前那条 `.bat` → Git Bash → `.sh` 的链路已删除，
+  它在这台机器上不稳定（cmd 按 GBK 解析中文、`where bash` 会命中 WSL 的 bash.exe）。
+
+## [0.1.0] - 2026-10-15
 
 本版本 fork 自 <https://github.com/nesror/Home-Assistant-Companion-for-Android>
 （作者 nesror 的"Home Assistant 官方 app 适配国内环境版"），代码基线为该 fork 最后一次与上游同步后的

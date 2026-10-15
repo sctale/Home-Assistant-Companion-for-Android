@@ -139,14 +139,29 @@
 ## 自行构建
 
 ```bash
-scripts/verify.sh                      # 代码风格 + 测试 + Lint + 构建
-scripts/build-release.sh 1            # 产出并验签 release APK（版本号取自 HEAD 的 git tag）
-scripts/publish-release.sh            # 推送 master + tag 并创建 GitHub Release
+scripts/verify.sh             # 代码风格 + 测试 + Lint + 调试包
+scripts/build-release.sh 1    # 只出产物、不联网（versionName 取自 HEAD 的 git tag）
 ```
 
-发布脚本必须在**仓库所有者本人的终端**里执行：它会往 GitHub 推东西，而构建这套产物的自动化环境被本机安全策略禁止对外网写入。也可以直接双击仓库根目录的 `发布v0.1.0到GitHub.bat`。脚本会先自检（产物存在、tag 就在当前提交上、发布说明里的 APK 校验和与实际产物一致），任一不符都不会推。`--dry-run` 只跑自检。
+发布走一个 PowerShell 脚本，一条命令从校验做到 Release：
 
-`versionCode` 每次发版手动 +1（写在这行命令里），`versionName` 由 git tag 推导，所以顺序是"提交 → 打 tag → 构建"。
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\release-app.ps1 -Version 0.1.1 -DryRun
+powershell -ExecutionPolicy Bypass -File scripts\release-app.ps1 -Version 0.1.1
+powershell -ExecutionPolicy Bypass -File scripts\release-app.ps1 -PublishOnly
+```
+
+`-DryRun` 跑完全部自检 + 真实构建 + 验签后停下，不打 tag、不推送；不带参数（或直接双击仓库根目录的
+`发布到GitHub.bat`）时版本号取最新 tag 的补丁位 +1；`-PublishOnly` 用现有产物重发说明与 APK。
+
+它会依次卡住这些前提，任一不符都不会往 GitHub 推：CHANGELOG.md 里有 `## [X.Y.Z] - 日期` 小节
+（Release 正文就取这一节，不再手工维护单独的说明文件）、工作区干净、tag 正好落在当前提交上、
+产物的包名/版本名/versionCode 与预期一致、签名不是 debug key。`versionCode` 默认由版本号推导
+（major\*10000+minor\*100+patch），`versionName` 由 git tag 推导，所以顺序只能是"提交 → 打 tag → 构建"。
+
+> 这台 Windows 机器上 `.ps1` 必须 UTF-8 **带 BOM**、`.bat` 必须纯 ASCII 无 BOM，否则 PowerShell 按
+> GBK 解析、cmd 按字节偏移错位。改完这两个文件后跑 `node tools/fix-script-encoding.js` 校正，
+> `node tools/check-encoding.js` 复核。
 
 需要 JDK 17+ 与 Android SDK Platform 37。签名材料放在 `keystore/signing.env`（已被 git 忽略，
 **不要提交**）；仓库里不含任何密钥。构建 `full` flavor（带 FCM 推送）需要自己提供

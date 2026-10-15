@@ -26,7 +26,7 @@ git diff --stat cae8833b9 -- . ':!app/src/screenshotTestFullDebug'
 | `.gitignore` | 三处反忽略规则：`!app/src/minimal/google-services.json`、`!wear/src/google-services.json`、`!automotive/src/google-services.json`（占位配置需入库）、`!common/src/main/res/values-zh-rCN/strings.xml`；新增 `keystore/` | 直接保留 |
 | `README.md` / `CHANGELOG.md` / `NOTICE` / `docs/CHANGES-VS-UPSTREAM.md` | 本项目的说明、溯源与 Apache-2.0 §4(b) 修改声明 | 保留 |
 | `app/src/main/res/xml/changelog_master.xml` | 改为记录本项目的版本（上游记录的是 2026.6.6） | 保留 |
-| `scripts/verify.sh`、`scripts/build-release.sh`、`tools/mock-google-services.json` | 本项目的本地门禁与构建入口。上游用 GitHub Actions 承担同样职责 | 保留；本项目的产物一律本地构建，不引入 hosted CI |
+| `scripts/verify.sh`、`scripts/build-release.sh`、`scripts/release-app.ps1`、`tools/*.js`、`tools/mock-google-services.json` | 本项目的本地门禁、构建与一键发布入口。上游用 GitHub Actions 承担同样职责 | 保留；本项目的产物一律本地构建，不引入 hosted CI |
 
 ## 明确"不做"的上游内容
 
