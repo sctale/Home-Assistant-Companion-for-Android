@@ -123,9 +123,15 @@ try {
   if ($existing) {
     $existing = "$existing".Trim()
     if ($existing -ne $head) {
-      Fail "$tag 已存在但指向 $($existing.Substring(0,7))，HEAD 是 $($head.Substring(0,7))。确认无误后手工重打 tag 再来。"
+      # 发版之后追加的文档/工具提交会让 tag 落后于 HEAD。只有"不重新构建"的 -PublishOnly 允许这种
+      # 状态：它上传的是既有产物，而那份产物本来就出自 tag 所在的那个提交。
+      if (-not $PublishOnly) {
+        Fail "$tag 已存在但指向 $($existing.Substring(0,7))，HEAD 是 $($head.Substring(0,7))。要按 HEAD 重建，先确认无误再手工重打 tag。"
+      }
+      Write-Host "  $tag 在 $($existing.Substring(0,7))，HEAD 是 $($head.Substring(0,7))（-PublishOnly：沿用现有产物，不按 HEAD 重建）" -ForegroundColor Yellow
+    } else {
+      Write-Host "  $tag 已存在且就在 HEAD"
     }
-    Write-Host "  $tag 已存在且就在 HEAD"
   } elseif ($PublishOnly) {
     Fail "-PublishOnly 要求 $tag 已存在（检查：git tag --points-at HEAD）"
   } elseif ($DryRun) {
