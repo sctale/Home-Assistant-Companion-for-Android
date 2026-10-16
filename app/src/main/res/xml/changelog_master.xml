@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <changelog xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingDefaultResource">
+    <release version="0.1.1" versioncode="101">
+        <change>设置界面补齐 233 条简体中文文案：传感器名称与说明、位置跟踪记录、连接检查、手势、Assist 与唤醒词、设备控制等，中文环境下不再回退英文。</change>
+        <change>简体中文覆盖率 68% → 84%；剩余未译部分集中在引导页与小部件配置项。</change>
+        <change>发布改由单个 PowerShell 脚本一条命令完成（scripts/release-app.ps1），产物校验更严格。</change>
+    </release>
     <release version="0.1.0" versioncode="1">
         <change>首个独立版本：基于 Home Assistant 官方 Android 客户端，继承 nesror 国内适配版的思路并重做。</change>
         <change>内置更新弹窗（公众号导流 / GitHub APK 自更新）已移除，安装渠道只有本仓库的 Release。</change>
