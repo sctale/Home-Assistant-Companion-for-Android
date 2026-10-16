@@ -17,19 +17,26 @@
 #   -DryRun       跑完全部自检 + 真实构建 + 验签，在打 tag 之前停下，不做任何外网操作。
 #   -PublishOnly  跳过构建，用仓库里已有的产物和 CHANGELOG 重发 Release（改了说明、或 gh 半途
 #                 失败之后用它补），tag 必须已存在。
+#   -SkipChecks   跳过 scripts/verify.sh 这道本地门禁。只在刚跑完门禁、或补发说明与产物时用。
 #
 # 前置：
-#   - JDK 17+ / Android SDK（aapt2 + apksigner）/ gh CLI 已登录
+#   - JDK 17+ / Android SDK（aapt2 + apksigner）/ gh CLI 已登录 / Git Bash（跑 verify.sh）
 #   - keystore\signing.env：KEYSTORE_PATH / KEYSTORE_PASSWORD / KEYSTORE_ALIAS（密钥与口令不入库）
 #   - CHANGELOG.md 里有本版本小节，标题形如 `## [0.1.1] - 2026-10-15`（Release 正文取自这一节）
 #   - 工作区干净：本项目按主题提交，发布脚本不替你 commit 代码，只打 tag、推送、发 Release
+#
+# 流程：
+#   CHANGELOG 校验 → scripts/verify.sh 本地门禁 → git 状态与 tag → assembleMinimalRelease
+#   → aapt2 校验包名/版本名/versionCode → apksigner 拒绝 debug key → 产物落 release/
+#   → git push origin master + tag → gh release create（正文取自 CHANGELOG 的本版本小节）
 # =====================================================
 
 param(
   [string]$Version = '',
   [int]$VersionCode = 0,
   [switch]$DryRun,
-  [switch]$PublishOnly
+  [switch]$PublishOnly,
+  [switch]$SkipChecks
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,6 +114,20 @@ try {
     Fail "CHANGELOG.md 缺少 [$Version] 小节。请补一行 ``## [$Version] - YYYY-MM-DD`` 再发布（Release 正文取自这一节）。"
   }
   Write-Host "  CHANGELOG 有 [$Version] 小节"
+
+  # ---------- 2.5 本地门禁 ----------
+  # 产物由本地脚本出，检查就必须前置，否则"构建通过"会被当成"可以发版"。verify.sh 本身是 bash
+  # （它驱动 gradle 并判定测试结果），这里只是调用它；发布链路（tag/push/gh）依然不经过 bash。
+  Step '本地门禁 scripts/verify.sh（ktlint + 单测 + Android Lint + 构建）'
+  $gateSkipped = [bool]$SkipChecks -or ([bool]$PublishOnly -and [bool]$DryRun)
+  if ($gateSkipped) {
+    Write-Host '  已跳过（-SkipChecks，或 -PublishOnly -DryRun 这种不重新构建的排演）' -ForegroundColor Yellow
+  } else {
+    $bash = 'C:\Program Files\Git\bin\bash.exe'
+    if (-not (Test-Path $bash)) { Fail "未找到 Git Bash（verify.sh 需要它）：$bash。确需跳过检查请加 -SkipChecks。" }
+    & $bash scripts/verify.sh
+    if ($LASTEXITCODE -ne 0) { Fail "本地门禁未通过（exit $LASTEXITCODE），禁止发布。" }
+  }
 
   # ---------- 3. 工作区必须干净（本项目按主题提交，脚本不做 git add） ----------
   Step '校验 git 状态'

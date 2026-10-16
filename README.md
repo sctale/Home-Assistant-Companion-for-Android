@@ -151,13 +151,15 @@ powershell -ExecutionPolicy Bypass -File scripts\release-app.ps1 -Version 0.1.1
 powershell -ExecutionPolicy Bypass -File scripts\release-app.ps1 -PublishOnly
 ```
 
-`-DryRun` 跑完全部自检 + 真实构建 + 验签后停下，不打 tag、不推送；不带参数（或直接双击仓库根目录的
+`-DryRun` 跑完本地门禁 + 真实构建 + 验签后停下，不打 tag、不推送；不带参数（或直接双击仓库根目录的
 `发布到GitHub.bat`）时版本号取最新 tag 的补丁位 +1；`-PublishOnly` 用现有产物重发说明与 APK。
 
-它会依次卡住这些前提，任一不符都不会往 GitHub 推：CHANGELOG.md 里有 `## [X.Y.Z] - 日期` 小节
-（Release 正文就取这一节，不再手工维护单独的说明文件）、工作区干净、tag 正好落在当前提交上、
-产物的包名/版本名/versionCode 与预期一致、签名不是 debug key。`versionCode` 默认由版本号推导
+它会依次卡住这些前提，任一不符都不会往 GitHub 推：先跑 `scripts/verify.sh`（ktlint、单元测试、Android
+Lint、构建），然后要求 CHANGELOG.md 里有 `## [X.Y.Z] - 日期` 小节（Release 正文就取这一节，不再手工
+维护单独的说明文件）、工作区干净、tag 正好落在当前提交上、产物的包名/版本名/versionCode 与预期一致、
+签名不是 debug key。`versionCode` 默认由版本号推导
 （major\*10000+minor\*100+patch），`versionName` 由 git tag 推导，所以顺序只能是"提交 → 打 tag → 构建"。
+确需跳过门禁用 `-SkipChecks`。
 
 > 这台 Windows 机器上 `.ps1` 必须 UTF-8 **带 BOM**、`.bat` 必须纯 ASCII 无 BOM，否则 PowerShell 按
 > GBK 解析、cmd 按字节偏移错位。改完这两个文件后跑 `node tools/fix-script-encoding.js` 校正，
