@@ -163,8 +163,11 @@ try {
   } elseif ($DryRun) {
     Write-Host '  -DryRun：跳过创建 tag' -ForegroundColor Yellow
   } else {
-    & git tag -a $tag -m $tag
-    if ($LASTEXITCODE -ne 0) { Fail "git tag -a $tag 失败（exit $LASTEXITCODE）" }
+    # 用轻量 tag：注释 tag 的正文只是 tag 名本身，不带额外信息，却要求仓库里配好 committer 身份
+    # —— 本仓库故意不写 git config，提交时用 -c 临时传。轻量和注释 tag 指向的提交完全一样，
+    # gh release 也照常识别。
+    & git tag $tag
+    if ($LASTEXITCODE -ne 0) { Fail "git tag $tag 失败（exit $LASTEXITCODE）。" }
     # 上一版的教训：tag 失败时 stderr 被吞掉，看起来像成功了。创建后必须回读确认。
     $created = (& git rev-parse --verify "$tag^{commit}" 2>$null)
     $created = "$created".Trim()
