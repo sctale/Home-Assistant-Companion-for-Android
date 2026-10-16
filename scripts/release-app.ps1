@@ -265,8 +265,9 @@ try {
   # ---------- 12. 回读远端 ----------
   Step '远端状态'
   (& git ls-remote origin "refs/heads/$branch" "refs/tags/$tag") | ForEach-Object { Write-Host "  $_" }
-  & $gh release view $tag --repo $repo --json tagName,isDraft,assets `
-    --jq '"  tag: " + .tagName + "  draft: " + (.isDraft | tostring) + "  assets: " + ([.assets[].name] | join(", "))'
+  # 直接打 gh 的纯文本输出。别用 --jq：PowerShell 5.1 往原生命令传参时会把内嵌双引号的表达式按空格
+  # 拆成多个位置参数，gh 报 "accepts at most 1 arg(s)"（v0.1.1 发布时就撞上了）。
+  & $gh release view $tag --repo $repo
   Remove-Item $notesFile -Force -ErrorAction SilentlyContinue
 
   Write-Host ''
