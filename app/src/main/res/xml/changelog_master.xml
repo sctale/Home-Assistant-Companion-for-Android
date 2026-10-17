@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <changelog xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingDefaultResource">
+    <release version="0.1.4" versioncode="104">
+        <change>WebSocket 保活服务不再被亮/灭屏、网络状态变化和每次进 App 重启：例行报到改为保持排期，只有配置改变或任务缺失时重建。</change>
+        <change>每次重启原本都是一次新的连接 + 订阅恢复 + 前台通知刷新；通知时效不变（服务每 30 秒自读配置）。</change>
+    </release>
     <release version="0.1.3" versioncode="103">
         <change>精确位置抓取合流：区域边界抖动或服务器要求叠加时不再各跑一轮全速 GPS（两倍射频换同一个答案）。</change>
         <change>抓取期间的 wake lock 时长改为与实际工作量对齐，不再凭空多占七分钟。</change>

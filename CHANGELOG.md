@@ -3,6 +3,18 @@
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.1.4] - 2026-10-17
+
+### 修复（WebSocket 前台服务被反复重启）
+
+- `WebsocketManager.start()` 以前对"已经在排期里的周期任务"也执行 `CANCEL_AND_REENQUEUE`。它的调用点是
+  亮屏/灭屏、省电模式切换、Wi-Fi 与网络状态变化、以及每次进 App —— 而 `ENQUEUED`（等下一轮）是周期任务
+  的正常状态，于是 15 分钟的排期被不停地重置、worker 被反复重启：**每次重启都是一次新的 WebSocket 连接、
+  一轮订阅恢复、一次前台通知刷新**。现在例行报到一律 `KEEP`，只有任务确实不存在或已终止、或者用户刚在
+  设置里改了 WebSocket 模式（走 `startImmediately`）才重建。
+- 收通知的时效不变：worker 本身每 30 秒会重读一次配置与连接性，改设置的那条路径仍然立刻生效。
+- 老 unique work 名的清理改为进程内一次性，不再每次调用都写一遍 WorkManager。
+
 ## [0.1.3] - 2026-10-17
 
 ### 修复（精确位置抓取被重复执行）
