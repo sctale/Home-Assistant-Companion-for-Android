@@ -28,6 +28,8 @@ flavor（无 Play 服务、无 FCM，见 `README.md`）。所有 Play 服务相�
 | 灭屏/省电模式/网络状态广播 | `HomeAssistantApplication.kt` 121–334 | 系统事件 | 每类 action 一次注册，**未见重复投递** | 保留（事件驱动本身就是省电做法） |
 | `ACTION_TIME_TICK` 每分钟全量扫描 | `HomeAssistantApplication.kt` 318–333 | 仅当用户选择 FAST_* | 整轮 sweep | 不动（用户显式选项） |
 | BLE 信标扫描 | altbeacon `BeaconService`（合并清单里 type=location） | 1100ms 扫 / 500ms 停 | 持续射频 | 不动：只在用户启用信标传感器时启动 |
+| 桌面小部件周期刷新 | `app/src/main/res/xml/*_widget_info.xml` 的 `updatePeriodMillis` | 实体/模板/媒体 30 分钟、相机 1 小时、按钮 24 小时 | 每个已放置的小部件一次 HTTP | 不动：只在用户真的放了小部件时才存在，且 30 分钟已是该系统 API 的下限，再压就会让小部件显示过期状态 |
+| 唤醒词监听 | `app/.../assist/service/AssistVoiceInteractionService.kt` | 启用后持续听 | 麦克风 + 本机推理 | 不动：用户显式启用，设置里已写明"会增加耗电量"，并有独立的测试/关闭入口 |
 | 通知命令的 `FULL_WAKE_LOCK` | `MessagingManager.kt` `COMMAND_SCREEN_ON` | 仅在自动化下发时 | 亮屏 30s 意图 | 见 §4 |
 
 ## 2. 这次真正修掉的浪费
