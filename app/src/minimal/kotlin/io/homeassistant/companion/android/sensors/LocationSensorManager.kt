@@ -140,6 +140,14 @@ class LocationSensorManager :
         private const val ONE_FIX_TIMEOUT_MS = 30_000L
         private const val MAX_ACCURATE_FIX_ATTEMPTS = 5
 
+        /** 持锁上限 = 重试次数 × 单次超时 + 这点余量（对齐实际工作量，不再凭空多占 7 分钟）。 */
+        private const val SESSION_TIMEOUT_MARGIN_MS = 30_000L
+
+        /** 刚抓到的精确位置在这个窗口内可以被另一个并发请求直接复用，不再重复跑一轮 GPS。 */
+        private const val ACCURATE_FIX_REUSE_MS = 15_000L
+
+        private const val WAKE_LOCK_TAG = "HomeAssistant::AccurateLocation"
+
         /** Bounds proximity alerts: they are a shared system resource, and this is a polite ceiling. */
         private const val MAX_PROXIMITY_ALERTS = 10
 
@@ -741,8 +749,9 @@ class LocationSensorManager :
         Timber.d("Proximity alert for '$zoneKey', entering=$entering")
 
         // The alert only says a boundary was crossed. Re-read where we actually are instead of trusting
-        // the alert payload, then let the computed diff decide what to report.
-        val location = currentAccurateLocation()
+        // the alert payload, then let the computed diff decide what to report. 相邻的进入+离开会各自
+        // 触发一次抓取，走同一个合流点就不会跑两轮全速 GPS。
+        val location = LocationRuntimeState.accurateFix(ACCURATE_FIX_REUSE_MS) { currentAccurateLocation() }
         if (location == null) {
             Timber.w("No location available after proximity alert")
             return
@@ -1095,7 +1104,7 @@ class LocationSensorManager :
             Attribute(singleAccurateLocation.id, "lastAccurateLocationRequest", now.toString(), "string"),
         )
 
-        val location = currentAccurateLocation(minAccuracy)
+        val location = LocationRuntimeState.accurateFix(ACCURATE_FIX_REUSE_MS) { currentAccurateLocation(minAccuracy) }
         if (location == null) {
             Timber.w("Failed to get location data for single accurate sensor")
             return
@@ -1117,11 +1126,15 @@ class LocationSensorManager :
         val provider = selectProvider(manager, Purpose.ACCURATE) ?: return null
 
         val wakeLock = latestContext.getSystemService<PowerManager>()
-            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HomeAssistant::AccurateLocation")
+            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
         var last: Location? = null
 
+        // 持锁时长与工作量对齐：整个抓取会话的上限就是 重试次数 × 单次超时，再加一点余量。
+        // 原来写死 10 分钟，等于一旦有哪条路径卡在锁里，屏幕熄灭的手机也会被 CPU 唤醒多留 7 分钟。
+        val sessionBudgetMillis = MAX_ACCURATE_FIX_ATTEMPTS * ONE_FIX_TIMEOUT_MS + SESSION_TIMEOUT_MARGIN_MS
+
         try {
-            wakeLock?.acquire(10 * 60 * 1000L)
+            wakeLock?.acquire(sessionBudgetMillis)
 
             val threshold = minAccuracy.coerceAtLeast(1)
             repeat(MAX_ACCURATE_FIX_ATTEMPTS) { attempt ->

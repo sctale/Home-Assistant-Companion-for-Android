@@ -1,6 +1,10 @@
 package io.homeassistant.companion.android.sensors
 
+import android.location.Location
 import io.homeassistant.companion.android.common.data.integration.Entity
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import timber.log.Timber
 
 /**
  * The location feature's state, deliberately kept outside [LocationSensorManager].
@@ -139,8 +143,39 @@ internal object LocationRuntimeState {
             zonePayload.clear()
             zoneFetchedAt.clear()
             subscriptionSignature = null
+            lastAccurateFixAt = 0L
+            lastAccurateFix = null
         }
     }
+
+    /**
+     * 精确位置请求的**合流**。
+     *
+     * 一次精确抓取最多是 `MAX_ACCURATE_FIX_ATTEMPTS × ONE_FIX_TIMEOUT` 的全速 GPS（服务器要求精确位置、
+     * 围栏进入/离开都会触发）。相邻的 enter+exit、或者服务器连发两次要求，如果各跑一轮，就是两倍射频
+     * 时间换同一个答案。这里用一把锁把它们串起来：后到的请求在结果还"新鲜"的窗口里直接复用前一个的
+     * 结果，不再自己跑一轮。
+     *
+     * 这不是降低精度——拿到的仍是刚测出来的高精度定位；省的是重复的抓取。
+     */
+    private val accurateMutex = Mutex()
+    private var lastAccurateFixAt = 0L
+    private var lastAccurateFix: Location? = null
+
+    suspend fun accurateFix(freshWindowMillis: Long, session: suspend () -> Location?): Location? =
+        accurateMutex.withLock {
+            val now = System.currentTimeMillis()
+            // 只看"上一次抓取发生在什么时候"，不看结果成不成功：一次没抓到位置的 GPS 会话同样烧满了
+            // 射频时间，紧接着再来一轮才是最该避免的事。
+            if (lastAccurateFixAt != 0L && now - lastAccurateFixAt < freshWindowMillis) {
+                Timber.d("Reusing the accurate fix another request just chased (${now - lastAccurateFixAt}ms old)")
+                return@withLock lastAccurateFix
+            }
+            session().also {
+                lastAccurateFix = it
+                lastAccurateFixAt = now
+            }
+        }
 }
 
 /**
