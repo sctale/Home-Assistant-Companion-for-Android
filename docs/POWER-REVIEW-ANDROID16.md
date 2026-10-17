@@ -57,6 +57,12 @@ flavor（无 Play 服务、无 FCM，见 `README.md`）。所有 Play 服务相�
 7. **周期任务不被 App 打开重排**：`KEEP` 取代 `CANCEL_AND_REENQUEUE`，15 分钟节奏不变但少掉每次进 App
    的额外一轮全套扫描。
 
+7. **精确位置请求合流**（v0.1.3）：一次精确抓取最多是 5 × 30 秒的全速 GPS，并且期间持有 partial wake
+   lock。相邻的进入+离开（边界抖动）、或服务器要求与围栏触发叠在一起时，原来会**各跑一轮**。现在同一
+   进程内串成一个会话、15 秒窗口内直接复用刚测到的结果（失败的会话同样不立即重来——它一样烧满了射频）。
+   持锁时长也从写死的 10 分钟改为"重试次数 × 单次超时 + 余量"，对齐实际工作量。3 例
+   `AccurateFixCoalescingTest` 覆盖合流语义。合流不降低精度：拿到的仍是几秒前实测的高精度定位。
+
 ## 3. 频率旋钮：这次反而是往回调快的
 
 v0.1.0 为了压住泄漏，把默认上报间隔压到 15 分钟、批处理上限 20 分钟、可调下限 5 分钟——这属于"少测来
@@ -77,13 +83,21 @@ v0.1.0 为了压住泄漏，把默认上报间隔压到 15 分钟、批处理上
 区域边界不再靠轮询：系统围栏（`addProximityAlert`）在 v0.1.2 才真的工作起来，进入/离开是事件驱动的，
 与上面的间隔无关。代价核算的立足点是：**每一帧的实际成本降下来了，所以同样的频率不再等于同样的耗电。**
 
+### 试过去但退回去的一项
+
+`onSensorUpdated`（`common/.../SensorManager.kt`）确实是无条件 `update` + `replaceAllAttributes`。试着在
+共享层加"值没变就跳过"之后，`AudioSensorManagerTest` 的
+`Given mismatched attributes when requesting update three times then cache kicks in after force update succeeds`
+暴露出上游**已经**在部分 manager 里用 `getFull(sensorId)` 做了同样的比对——共享层再加一遍就变成每轮两次
+查询（断言从 3 次变 6 次）。正确做法是让还没做缓存的 manager 各自照 `AudioSensorManager` 的模式补，而不是
+在共用函数里加一层。已回退，记在这里免得有人再走一遍。
+
 ## 4. 待办（诚实记录，已量化但本次没改）
 
 | 项 | 位置 | 为什么本次没改 |
 | --- | --- | --- |
-| `onSensorUpdated` 无条件 `update` + `replaceAllAttributes`（DELETE+INSERT 全部属性），值没变也重写 | `common/.../SensorManager.kt` 273/275，`SensorDao` 96–103 | 纯本地写盘，单次微秒级；与射频唤醒不在一个量级。要做对需要额外读一次属性做比较，改动落在 33 个 manager 共用的路径上，收益/风险不划算，留待有实测数据支撑 |
-| sweep 里每 (传感器 × 服务器) 一次 `getFull`（LEFT JOIN 全部属性，约 128 次/轮） | `SensorReceiverBase.kt` 240 | 同上：本地查询。批量化要改 DAO 返回形状 |
-| `requestSingleAccurateLocation` 的 wakeLock 覆盖 5×30s 重试（最长 150 秒全速 GPS），且与围栏触发的精确请求之间没有 single-flight | `LocationSensorManager.kt` 1032–1047, 665 | 需要真机确认服务器下发精确位置请求的频率，否则改超时可能把"要不到位置"变成新问题。风险：相邻的进入/离开会并发跑两条 150 秒定位 |
+| 部分 manager 每轮重写属性表（值没变也写） | `SensorManager.onSensorUpdated` + 各 manager | 见 §3 末尾的"试过去但退回去"：共享层加跳过会与上游 manager 级缓存重复，正确做法是按 `AudioSensorManager` 的模式逐个补 |
+| sweep 里每 (传感器 × 服务器) 一次 `getFull`（LEFT JOIN 全部属性，约 128 次/轮） | `SensorReceiverBase.kt` 240 | 本地查询，单次微秒级，与射频唤醒不在一个量级；批量化要改 DAO 返回形状 |
 | `COMMAND_SCREEN_ON` 用已废弃的 `FULL_WAKE_LOCK` 且 `acquire(30s)` 后立刻 `release()`（超时形参被忽略） | `MessagingManager.kt` 822–829 | 只在自动化显式下发时触发，不是后台常驻唤醒；换 `FLAG_TURN_SCREEN_ON` 会改变用户可见行为 |
 | 多处主线程 `runBlocking` 做网络 | `ServerSettingsPresenterImpl.kt` 32/54/128 等 | ANR/卡顿问题，不是耗电源，另开一轮 |
 | `minimal` 仍打包 `cronet-embedded` native 库，未见 16KB 页对齐配置 | `AndroidApplicationDependenciesConventionPlugin.kt` 73–76 | 影响安装/加载而非续航；需要真机确认该设备是否 16KB 模式 |

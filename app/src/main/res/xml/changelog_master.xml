@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <changelog xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingDefaultResource">
+    <release version="0.1.3" versioncode="103">
+        <change>精确位置抓取合流：区域边界抖动或服务器要求叠加时不再各跑一轮全速 GPS（两倍射频换同一个答案）。</change>
+        <change>抓取期间的 wake lock 时长改为与实际工作量对齐，不再凭空多占七分钟。</change>
+    </release>
     <release version="0.1.2" versioncode="102">
         <change>修掉耗电复查里最大的一处：定位的去重门控与区域缓存此前"活不过一次广播"，静止时也在每帧重复上报并重复拉取区域列表。</change>
         <change>区域进入/离开事件此前实际一次都没发出，随同一处修复恢复。</change>
