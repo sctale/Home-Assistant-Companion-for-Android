@@ -21,11 +21,17 @@ git diff --stat cae8833b9 -- . ':!app/src/screenshotTestFullDebug'
 | `app/src/minimal/google-services.json` | 新增，无凭据占位配置，只为满足 `com.google.gms.google-services` 插件（该插件对所有 flavor 生效）。上游在已删除的 CI step 里生成它 | 保留；上游若新增 applicationId，需要同步往这个文件里加条目 |
 | `build-logic/.../AndroidApplicationConventionPlugin.kt` | 拆分 `NAMESPACE`（保持上游包名，源码树与清单里的相对组件名依赖它）与 `APPLICATION_ID`（`dev.sctale.homeassistant.companion`）。其余与上游一致 | 上游若动 `namespace` 或签名配置，手工合并，别覆盖掉这个拆分 |
 | `common/src/main/res/values/strings.xml` | 追加 8 条本项目新增的定位设置项文案 | 上游该文件由 Lokalise 管理；只追加，不改不删既有 key |
-| `common/src/main/res/values-zh-rCN/strings.xml` | 新增，1013 条简体中文（覆盖上游 68%）。上游不入库这个文件（`.gitignore` 忽略翻译产物，由已删除的 Lokalise action 生成），我们显式反忽略并跟踪 | 上游新增 key 时这里不会自动补齐，未翻译的回退英文。若以后要恢复官方翻译流程，先删掉本文件再接上游流水线 |
+| `common/src/main/res/values-zh-rCN/strings.xml` | 新增，1246 条简体中文（覆盖上游 84%，v0.1.1 补齐设置界面 233 条）。上游不入库这个文件（`.gitignore` 忽略翻译产物，由已删除的 Lokalise action 生成），我们显式反忽略并跟踪 | 上游新增 key 时这里不会自动补齐，未翻译的回退英文（`node tools/check-translations.js` 会报缺口与占位符错误）。若以后要恢复官方翻译流程，先删掉本文件再接上游流水线 |
 | `common/src/main/res/xml/locales_config.xml` | 增加 `zh-CN`（上游只有 `en`） | 上游若改为生成此文件，改为在生成逻辑里加 zh-CN |
 | `.gitignore` | 三处反忽略规则：`!app/src/minimal/google-services.json`、`!wear/src/google-services.json`、`!automotive/src/google-services.json`（占位配置需入库）、`!common/src/main/res/values-zh-rCN/strings.xml`；新增 `keystore/` | 直接保留 |
 | `README.md` / `CHANGELOG.md` / `NOTICE` / `docs/CHANGES-VS-UPSTREAM.md` | 本项目的说明、溯源与 Apache-2.0 §4(b) 修改声明 | 保留 |
 | `app/src/main/res/xml/changelog_master.xml` | 改为记录本项目的版本（上游记录的是 2026.6.6） | 保留 |
+| `common/src/main/kotlin/.../sensors/SensorReceiverBase.kt` | **改了上游共享代码**：`onReceive` 改 `goAsync()`（并抽出 `handleIntent`）；`get_config` 按 `REGISTRY_SYNC_INTERVAL`（30 分钟）限频，`coreSensorStatus` 允许为 null | 上游若重构 sweep，务必保住两点：广播要 `goAsync`；限频只能限"注册表对齐"，不能把 SRB 里"值变了才上报"那段一起圈进去（判断依据见 docs/POWER-REVIEW-ANDROID16.md） |
+| `common/src/main/kotlin/.../websocket/impl/WebSocketCoreImpl.kt` | 重连由固定 10 秒改为 10→20→40→60 秒封顶、连上即复位；URL 变更仍立即重连 | 上游若改重连策略，保留退避；只在全新连接/URL 变更处复位计数 |
+| `app/src/main/kotlin/.../websocket/WebsocketManager.kt` | 每轮心跳只做一次"该不该跑"判断（原来 `shouldWeRun()` 与 `manageServerJobs()` 各跑一遍，清理/新建又各查一遍）；30 秒保活间隔与 `WebsocketSetting` 语义不变 | 上游若调整循环结构，注意不要把每服务器的 `settingsDao.get` + `hasActiveConnection()` 恢复成多轮（后者会触发连接性隐私指示） |
+| `app/src/main/kotlin/.../sensors/SensorWorker.kt` | `enqueueUniquePeriodicWork` 的策略由 `CANCEL_AND_REENQUEUE` 改为 `KEEP`（进 App 不再重排周期任务） | 保留；若上游要靠重排刷新请求定义，改成"按 WorkInfo 状态选择策略"（参考 `WebsocketManager.start`） |
+| `app/src/minimal/kotlin/.../sensors/LocationRuntimeState.kt` | 新增：定位去重门控、区域归属基线（写穿 SharedPreferences）与区域列表缓存的进程级存放处，外加围栏指纹 `ProximityAlert` | 上游无对应物（其 minimal 是空壳）；若将来上游给 minimal 补实现，以上游为准并对照本文件检查"状态是否活得过 receiver 实例" |
+| `docs/POWER-REVIEW-ANDROID16.md` | 新增：Android 16 耗电复查（唤醒源清单、保留的频率旋钮、待办、真机验证方法） | 保留 |
 | `scripts/verify.sh`、`scripts/build-release.sh`、`scripts/release-app.ps1`、`tools/*.js`、`tools/mock-google-services.json` | 本项目的本地门禁、构建与一键发布入口。上游用 GitHub Actions 承担同样职责 | 保留；本项目的产物一律本地构建，不引入 hosted CI |
 
 ## 明确"不做"的上游内容

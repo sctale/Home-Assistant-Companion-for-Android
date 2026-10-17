@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <changelog xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingDefaultResource">
+    <release version="0.1.2" versioncode="102">
+        <change>修掉耗电复查里最大的一处：定位的去重门控与区域缓存此前"活不过一次广播"，静止时也在每帧重复上报并重复拉取区域列表。</change>
+        <change>区域进入/离开事件此前实际一次都没发出，随同一处修复恢复。</change>
+        <change>传感器扫描不再每次亮屏都拉一次完整实体注册表；广播改为 goAsync，不再被系统掐断后重跑。</change>
+        <change>WebSocket 在服务器不可达时改为指数退避重连（不再每 10 秒一次完整握手），保活心跳与通知时效不变。</change>
+        <change>检测节奏反而调快回来：默认定位间隔 15 分钟 → 5 分钟，可调下限放到 1 分钟——省电来自去掉重复上报与多余唤醒，不是少测。</change>
+    </release>
     <release version="0.1.1" versioncode="101">
         <change>设置界面补齐 233 条简体中文文案：传感器名称与说明、位置跟踪记录、连接检查、手势、Assist 与唤醒词、设备控制等，中文环境下不再回退英文。</change>
         <change>简体中文覆盖率 68% → 84%；剩余未译部分集中在引导页与小部件配置项。</change>
