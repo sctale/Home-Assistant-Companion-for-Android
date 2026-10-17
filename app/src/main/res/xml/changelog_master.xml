@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <changelog xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingDefaultResource">
+    <release version="0.1.6" versioncode="106">
+        <change>同一秒内到达的多次传感器扫描被合流为"当前一轮 + 最多一轮补跑"：补跑重读实时值，状态变化一个都不丢。</change>
+    </release>
     <release version="0.1.5" versioncode="105">
         <change>修掉一个可能造成"无法取消的残留围栏"的顺序问题：围栏改为先注册需要的、再撤销过期的，进程中途被杀也不会留下持续唤醒应用的孤儿告警。</change>
         <change>复查收尾：把剩余可疑的循环逐个核实排掉（全仓唯一闹钟是一次性、锁屏遮罩与播放计时都是挂起等待），结论记录在 docs/POWER-REVIEW-ANDROID16.md。</change>
