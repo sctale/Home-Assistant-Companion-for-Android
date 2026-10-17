@@ -114,14 +114,21 @@ class LocationSensorManager :
         private const val DEFAULT_MINIMUM_ACCURACY = 200
 
         /**
-         * Background cadence for a hand-rolled subscription. Play's fused provider reached the same
-         * effective behaviour by batching a 60s request; without a batching hint, a 60s self-managed
-         * subscription is what drained users' batteries, so the default is deliberately conservative.
+         * Background cadence for a hand-rolled subscription.
+         *
+         * v0.1.0 曾把默认压到 15 分钟、批处理 20 分钟，那是"用少测来省电"——v0.1.2 的复查结论是这条
+         * 路子本身不该走：真正浪费的是每帧重复上报、每帧重拉区域列表、每次扫描重挂围栏。默认因此回到
+         * 5 分钟，并把可调下限从 5 分钟放到 1 分钟：想更密的轨迹现在可以放心设，因为每一帧的实际成本
+         * 已经降下来了。
+         *
+         * 批处理上限与间隔取齐（不再额外压 20 分钟）：它只允许平台把同一轮里已经到期的结果合并投递，
+         * 不会让定位结果迟到超过一个周期。区域边界不再依赖轮询——系统围栏（`addProximityAlert`）在
+         * v0.1.2 才真正开始工作，所以进入/离开是事件驱动的，与这里的间隔无关。
          */
-        private const val DEFAULT_UPDATE_INTERVAL_SECONDS = 15 * 60L
-        private const val DEFAULT_MAX_UPDATE_DELAY_SECONDS = 20 * 60L
+        private const val DEFAULT_UPDATE_INTERVAL_SECONDS = 5 * 60L
+        private const val DEFAULT_MAX_UPDATE_DELAY_SECONDS = 5 * 60L
         private const val DEFAULT_MINIMUM_DISTANCE_METERS = 100f
-        private const val MINIMUM_UPDATE_INTERVAL_SECONDS = 5 * 60L
+        private const val MINIMUM_UPDATE_INTERVAL_SECONDS = 60L
         private const val DEFAULT_TRIGGER_RANGE_METERS = 300
         private const val DEFAULT_UPDATE_INTERVAL_HA_SECONDS = 5
 
