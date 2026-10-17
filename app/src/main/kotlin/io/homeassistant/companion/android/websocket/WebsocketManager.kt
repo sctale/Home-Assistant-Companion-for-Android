@@ -132,12 +132,18 @@ class WebsocketManager(appContext: Context, workerParams: WorkerParameters) :
         // Start listening for notifications
         Timber.d("Starting to listen to Websocket")
         val jobs = mutableMapOf<Int, Job>()
-        manageServerJobs(jobs, this)
+        if (!manageServerJobs(jobs, this)) return@withContext Result.success()
 
         // play ping pong to ensure we have a connection and server changes are handled.
-        do {
+        //
+        // 一轮只评估一次该不该跑：原来 `shouldWeRun()` 和 `manageServerJobs()` 各自把每台服务器过一遍
+        // `settingsDao.get` + `hasActiveConnection()`（后者还会触发连接性隐私指示），等于每 30 秒白做
+        // 双份。心跳节奏本身保持 30 秒不动——那是连接保活，改了会漏通知。
+        var keepRunning = true
+        while (keepRunning && isActive) {
             delay(30000)
-        } while (jobs.values.any { it.isActive } && isActive && shouldWeRun() && manageServerJobs(jobs, this))
+            keepRunning = manageServerJobs(jobs, this)
+        }
 
         jobs.forEach { it.value.cancel() }
         jobs.clear()
@@ -173,28 +179,37 @@ class WebsocketManager(appContext: Context, workerParams: WorkerParameters) :
         return true
     }
 
+    /**
+     * Brings the per-server notification jobs in line with the settings, and pings what is already
+     * connected.
+     *
+     * @return `false` when this worker has nothing left to keep alive, which ends the 30s loop and lets
+     * WorkManager's next run re-evaluate.
+     *
+     * 每台服务器每轮只做一次 `shouldRunForServer`（原来清理和新建各做一遍，加上外层 `shouldWeRun()`
+     * 一共三轮 `settingsDao.get` + `hasActiveConnection()`）。判断结果不变，只是不再重复花钱。
+     */
     private suspend fun manageServerJobs(jobs: MutableMap<Int, Job>, coroutineScope: CoroutineScope): Boolean {
-        val servers = serverManager.servers()
+        val runnable = serverManager.servers().filter { shouldRunForServer(it.id) }.map { it.id }
 
         // Clean up...
-        jobs.filter { (serverId, _) ->
-            servers.none { it.id == serverId } || !shouldRunForServer(serverId)
-        }
+        jobs.filter { (serverId, _) -> serverId !in runnable }
             .forEach { (serverId, job) ->
                 job.cancel()
                 jobs.remove(serverId)
             }
         // Keep up existing connections...
-        jobs.forEach { (serverId, _) ->
+        jobs.keys.forEach { serverId ->
             coroutineScope.launch { serverManager.webSocketRepository(serverId).sendPing() }
         }
         // Start new connections...
-        servers.filter { it.id !in jobs.keys && shouldRunForServer(it.id) }
-            .forEach {
-                jobs[it.id] = coroutineScope.launch { collectNotifications(it.id) }
+        runnable.filter { it !in jobs.keys }
+            .forEach { serverId ->
+                jobs[serverId] = coroutineScope.launch { collectNotifications(serverId) }
             }
 
-        return true // for while
+        if (runnable.isEmpty()) return false
+        return jobs.values.any { it.isActive }
     }
 
     private suspend fun collectNotifications(serverId: Int) {

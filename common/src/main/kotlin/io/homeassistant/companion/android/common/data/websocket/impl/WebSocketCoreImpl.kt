@@ -100,6 +100,12 @@ import timber.log.Timber
 private val DELAY_BEFORE_RECONNECT = 10.seconds
 
 /**
+ * 重连退避的上限。服务器长时间不可达（HA 停服、路由器重启、离家后 HOME_WIFI）时，固定 10 秒一次
+ * 意味着整夜都在做 TLS 握手 + 认证，是后台最稳定的耗电来源之一。
+ */
+private val MAX_DELAY_BEFORE_RECONNECT = 60.seconds
+
+/**
  * Implementation of the [WebSocketCore] interface for managing WebSocket connections to a Home Assistant server.
  *
  * ### Implementation Details:
@@ -152,6 +158,9 @@ internal class WebSocketCoreImpl(
      */
     @VisibleForTesting
     val activeMessages = ConcurrentHashMap<Long, ActiveMessage>()
+
+    /** 连续重连失败的次数，用来算退避；连接成功即复位（见 nextReconnectDelay）。 */
+    private var reconnectAttempts = 0
 
     // Each message that we send needs a unique ID to match it to the answer
     private val id = AtomicLong(1)
@@ -1015,15 +1024,31 @@ internal class WebSocketCoreImpl(
             if (shouldAttemptReconnect && wsScope.isActive) {
                 // Delay before reconnect unless URL changed
                 if (closeReason != WebSocketState.Closed.Reason.CHANGED_URL) {
-                    delay(DELAY_BEFORE_RECONNECT)
+                    delay(nextReconnectDelay())
+                } else {
+                    reconnectAttempts = 0
                 }
                 reconnectSubscriptions()
             }
         }
     }
 
+    /**
+     * 指数退避：10 → 20 → 40 → 60 秒封顶，连上就复位。
+     *
+     * 只影响"服务器不可达"这段时间里的重试密度；连接正常时这段代码根本不执行，通知到达节奏不变。
+     * 服务器恢复可达后的最长恢复等待从 10 秒变成 60 秒，换来的是夜间不再每小时 360 次无谓的
+     * TLS 握手——这正是用户反馈"整夜掉电"里最难查的那部分。
+     */
+    private suspend fun nextReconnectDelay(): Duration {
+        val factor = 1 shl reconnectAttempts.coerceAtMost(3)
+        reconnectAttempts++
+        return (DELAY_BEFORE_RECONNECT * factor).coerceAtMost(MAX_DELAY_BEFORE_RECONNECT)
+    }
+
     private suspend fun reconnectSubscriptions() {
         if (connect()) {
+            reconnectAttempts = 0
             Timber.d("Resubscribing to active subscriptions...")
             activeMessages.filterValues { it is ActiveMessage.Subscription }.entries
                 .forEach { (oldId, oldActiveMessage) ->
