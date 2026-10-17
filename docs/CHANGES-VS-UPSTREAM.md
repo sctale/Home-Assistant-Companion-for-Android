@@ -32,7 +32,7 @@ git diff --stat cae8833b9 -- . ':!app/src/screenshotTestFullDebug'
 | `app/src/main/kotlin/.../sensors/SensorWorker.kt` | `enqueueUniquePeriodicWork` 的策略由 `CANCEL_AND_REENQUEUE` 改为 `KEEP`（进 App 不再重排周期任务） | 保留；若上游要靠重排刷新请求定义，改成"按 WorkInfo 状态选择策略"（参考 `WebsocketManager.start`） |
 | `app/src/minimal/kotlin/.../sensors/LocationRuntimeState.kt` | 新增：定位去重门控、区域归属基线（写穿 SharedPreferences）与区域列表缓存的进程级存放处，外加围栏指纹 `ProximityAlert` | 上游无对应物（其 minimal 是空壳）；若将来上游给 minimal 补实现，以上游为准并对照本文件检查"状态是否活得过 receiver 实例" |
 | `docs/POWER-REVIEW-ANDROID16.md` | 新增：Android 16 耗电复查（唤醒源清单、保留的频率旋钮、待办、真机验证方法） | 保留 |
-| `scripts/verify.sh`、`scripts/build-release.sh`、`scripts/release-app.ps1`、`tools/*.js`、`tools/mock-google-services.json` | 本项目的本地门禁、构建与一键发布入口。上游用 GitHub Actions 承担同样职责 | 保留；本项目的产物一律本地构建，不引入 hosted CI |
+| `scripts/verify.sh`、`scripts/build-release.sh`、`scripts/release-app.ps1`、`tools/*`（编码/翻译/16KB 对齐自检）、`tools/mock-google-services.json` | 本项目的本地门禁、构建与一键发布入口。上游用 GitHub Actions 承担同样职责 | 保留；本项目的产物一律本地构建，不引入 hosted CI |
 
 ## 明确"不做"的上游内容
 

@@ -100,7 +100,7 @@ v0.1.0 为了压住泄漏，把默认上报间隔压到 15 分钟、批处理上
 | sweep 里每 (传感器 × 服务器) 一次 `getFull`（LEFT JOIN 全部属性，约 128 次/轮） | `SensorReceiverBase.kt` 240 | 本地查询，单次微秒级，与射频唤醒不在一个量级；批量化要改 DAO 返回形状 |
 | `COMMAND_SCREEN_ON` 用已废弃的 `FULL_WAKE_LOCK` 且 `acquire(30s)` 后立刻 `release()`（超时形参被忽略） | `MessagingManager.kt` 822–829 | 只在自动化显式下发时触发，不是后台常驻唤醒；换 `FLAG_TURN_SCREEN_ON` 会改变用户可见行为 |
 | 多处主线程 `runBlocking` 做网络 | `ServerSettingsPresenterImpl.kt` 32/54/128 等 | ANR/卡顿问题，不是耗电源，另开一轮 |
-| `minimal` 仍打包 `cronet-embedded` native 库，未见 16KB 页对齐配置 | `AndroidApplicationDependenciesConventionPlugin.kt` 73–76 | 影响安装/加载而非续航；需要真机确认该设备是否 16KB 模式 |
+| ~~`minimal` 仍打包 `cronet-embedded` native 库，未见 16KB 页对齐配置~~ | `AndroidApplicationDependenciesConventionPlugin.kt` 73–76 | **已核实，不是问题**：`node`/`python3 tools/check-16kb-alignment.py` 解析产物里 12 个 `.so` 的 ELF 程序头，6 个 64 位库（含 `libcronet.143.0.7445.0.so`、`libmicrowakeword.so`、`libandroidx.graphics.path.so`）的 `PT_LOAD p_align` 全是 `0x4000`，满足 Android 15/16 的 16KB 页内核；32 位 ABI 不在此约束内 |
 
 ## 5. 真机上怎么验证这些改动有效
 
