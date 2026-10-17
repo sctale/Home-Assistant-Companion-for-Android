@@ -1,6 +1,10 @@
 package io.homeassistant.companion.android.common.sensors
 
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 
 /**
@@ -23,6 +27,14 @@ internal object SensorSweepCoalescer {
     private val lock = Any()
     private var running = false
     private var pendingWhileRunning = false
+
+    /**
+     * Hard ceiling for one sweep. A manager that never resumes (a location callback the platform simply
+     * does not deliver, for example) must not be able to hold the coalescer open forever: without this the
+     * first hung sweep would silently turn every later broadcast into a no-op - a functional regression
+     * dressed up as a power saving.
+     */
+    internal val SWEEP_TIMEOUT: Duration = 60.seconds
 
     /** Number of sweeps actually executed. Exposed for tests and for the debug log. */
     @Volatile
@@ -49,14 +61,20 @@ internal object SensorSweepCoalescer {
         try {
             while (true) {
                 executed++
-                sweep()
+                val completedNormally = try {
+                    withTimeout(SWEEP_TIMEOUT) { sweep() }
+                    true
+                } catch (e: TimeoutCancellationException) {
+                    Timber.e("Sensor sweep exceeded ${SWEEP_TIMEOUT} and was abandoned; later sweeps continue")
+                    false
+                }
                 val runAgain = synchronized(lock) {
                     val again = pendingWhileRunning
                     pendingWhileRunning = false
                     if (!again) running = false
                     again
                 }
-                if (!runAgain) return
+                if (!runAgain || !completedNormally) return
                 Timber.d("Catching up one sweep requested while the previous one was running")
             }
         } catch (e: CancellationException) {

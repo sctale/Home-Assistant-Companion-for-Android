@@ -1,8 +1,11 @@
 package io.homeassistant.companion.android.common.sensors
 
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
@@ -63,6 +66,31 @@ class SensorSweepCoalescerTest {
         SensorSweepCoalescer.run { sweeps++ }
 
         assertEquals(3, sweeps, "coalescing must not swallow events that arrive one after another")
+    }
+
+    @Test
+    fun `Given a sweep that never resumes then the coalescer is released instead of blocking every later sweep`() = runTest {
+        var sweeps = 0
+        val first = async {
+            SensorSweepCoalescer.run {
+                sweeps++
+                awaitCancellation()
+            }
+        }
+        runCurrent()
+        assertEquals(1, sweeps)
+
+        advanceTimeBy(SensorSweepCoalescer.SWEEP_TIMEOUT + 1.seconds)
+        runCurrent()
+        first.await()
+
+        SensorSweepCoalescer.run { sweeps++ }
+        assertEquals(
+            2,
+            sweeps,
+            "a hung sweep must not turn every later broadcast into a no-op — that would be a functional " +
+                "regression dressed up as a power saving",
+        )
     }
 
     @Test
