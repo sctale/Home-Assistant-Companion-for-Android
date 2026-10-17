@@ -69,6 +69,19 @@ flavor（无 Play 服务、无 FCM，见 `README.md`）。所有 Play 服务相�
    每次重启都是一次新的连接 + 订阅恢复 + 前台通知刷新。现在例行报到一律 `KEEP`，只有任务确实不存在/已
    终止，或用户刚在设置里改了模式（`startImmediately`）才重建。老 unique work 名的清理也改成进程内一次性。
 
+9. **不再可能留下"孤儿"系统围栏**（v0.1.5）：重挂告警的写法原来是**先撤销全部、再逐个重注册**，如果进程
+   正好在这两步之间被杀，系统里挂着的围栏就再也没有记录可以取消它（只能清除应用数据），而它会一直唤醒
+   应用。改成"先注册需要的、再撤销不再需要的"：任何时刻都只可能多撤一次（无害），不可能出现没有句柄的
+   残留告警。同一 key 的 `addProximityAlert` 本身是替换语义，所以这个顺序是安全的。
+
+### 已排查确认不是耗电源的循环
+
+- `ForegroundServiceLauncher.kt:80` 全仓唯一的闹钟：`set(RTC_WAKEUP, now+2s)` 一次性，非精确、不穿透 Doze。
+- `HazeLockOverlay.kt:41` 的 `while (true)` 挂在 `awaitPointerEvent()` 上，挂起等待，不转 CPU。
+- `HAMediaPlayer.kt:297` 的时间文字循环只在播放卡片可见时以固定间隔刷新（`delay` 挂起），属前台开销；
+  可选优化是暂停时不刷新，见 §4。
+- `SensorReceiver.kt:101` 的 `NEXT_ALARM_CLOCK_CHANGED` 是广播映射（Next Alarm 传感器），不是我们自己排的闹钟。
+
 ## 3. 频率旋钮：这次反而是往回调快的
 
 v0.1.0 为了压住泄漏，把默认上报间隔压到 15 分钟、批处理上限 20 分钟、可调下限 5 分钟——这属于"少测来
@@ -104,6 +117,7 @@ v0.1.0 为了压住泄漏，把默认上报间隔压到 15 分钟、批处理上
 | --- | --- | --- |
 | 部分 manager 每轮重写属性表（值没变也写） | `SensorManager.onSensorUpdated` + 各 manager | 见 §3 末尾的"试过去但退回去"：共享层加跳过会与上游 manager 级缓存重复，正确做法是按 `AudioSensorManager` 的模式逐个补 |
 | sweep 里每 (传感器 × 服务器) 一次 `getFull`（LEFT JOIN 全部属性，约 128 次/轮） | `SensorReceiverBase.kt` 240 | 本地查询，单次微秒级，与射频唤醒不在一个量级；批量化要改 DAO 返回形状 |
+| 播放卡片的时间文字在暂停时仍按固定间隔刷新 | `HAMediaPlayer.kt` 297 | 只在播放卡片可见时运行，属前台开销；改成"暂停不刷新"要处理 seek 后不重绘的问题，收益小 |
 | `COMMAND_SCREEN_ON` 用已废弃的 `FULL_WAKE_LOCK` 且 `acquire(30s)` 后立刻 `release()`（超时形参被忽略） | `MessagingManager.kt` 822–829 | 只在自动化显式下发时触发，不是后台常驻唤醒；换 `FLAG_TURN_SCREEN_ON` 会改变用户可见行为 |
 | 多处主线程 `runBlocking` 做网络 | `ServerSettingsPresenterImpl.kt` 32/54/128 等 | ANR/卡顿问题，不是耗电源，另开一轮 |
 | ~~`minimal` 仍打包 `cronet-embedded` native 库，未见 16KB 页对齐配置~~ | `AndroidApplicationDependenciesConventionPlugin.kt` 73–76 | **已核实，不是问题**：`node`/`python3 tools/check-16kb-alignment.py` 解析产物里 12 个 `.so` 的 ELF 程序头，6 个 64 位库（含 `libcronet.143.0.7445.0.so`、`libmicrowakeword.so`、`libandroidx.graphics.path.so`）的 `PT_LOAD p_align` 全是 `0x4000`，满足 Android 15/16 的 16KB 页内核；32 位 ABI 不在此约束内 |

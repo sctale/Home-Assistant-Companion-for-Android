@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <changelog xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingDefaultResource">
+    <release version="0.1.5" versioncode="105">
+        <change>修掉一个可能造成"无法取消的残留围栏"的顺序问题：围栏改为先注册需要的、再撤销过期的，进程中途被杀也不会留下持续唤醒应用的孤儿告警。</change>
+        <change>复查收尾：把剩余可疑的循环逐个核实排掉（全仓唯一闹钟是一次性、锁屏遮罩与播放计时都是挂起等待），结论记录在 docs/POWER-REVIEW-ANDROID16.md。</change>
+    </release>
     <release version="0.1.4" versioncode="104">
         <change>WebSocket 保活服务不再被亮/灭屏、网络状态变化和每次进 App 重启：例行报到改为保持排期，只有配置改变或任务缺失时重建。</change>
         <change>每次重启原本都是一次新的连接 + 订阅恢复 + 前台通知刷新；通知时效不变（服务每 30 秒自读配置）。</change>
