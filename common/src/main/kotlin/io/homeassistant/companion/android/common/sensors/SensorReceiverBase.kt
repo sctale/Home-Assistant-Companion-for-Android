@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
 import android.os.Build
+import androidx.annotation.VisibleForTesting
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
@@ -32,6 +33,8 @@ import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.util.Locale
 import javax.inject.Inject
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +51,40 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
         const val ACTION_UPDATE_SENSORS = "io.homeassistant.companion.android.UPDATE_SENSORS"
         const val ACTION_STOP_BEACON_SCANNING = "io.homeassistant.companion.android.STOP_BEACON_SCANNING"
         const val EXTRA_SENSOR_ID = "sensorId"
+
+        /**
+         * 注册表对齐（`get_config`，会带回整个实体注册表）的最短间隔。
+         *
+         * 上游把这件事挂在每一次广播后面：亮/灭屏、省电模式切换、Wi-Fi/网络状态变化……一次一整个大
+         * payload，还要解析。而它的唯一用途是算出 `coreSensorStatus`（核心侧把哪些传感器停用/启用了），
+         * 不参与"状态值有没有变化"的判断——那用的是本地记存的 lastSentState，见 syncSensorsWithServer
+         * 里的 enabledRegistrations 条件。所以按间隔限频：状态上报照旧每轮发生，只有"用户在前端改了这个
+         * 传感器的启用状态"最多晚这么久在 App 里对齐。
+         */
+        internal val REGISTRY_SYNC_INTERVAL: Duration = 30.minutes
+
+        private val registrySyncLock = Any()
+        private val lastRegistrySync = mutableMapOf<Int, Long>()
+
+        internal fun isRegistrySyncDue(serverId: Int, now: Long = System.currentTimeMillis()): Boolean =
+            synchronized(registrySyncLock) {
+                (lastRegistrySync[serverId] ?: 0L) + REGISTRY_SYNC_INTERVAL.inWholeMilliseconds <=
+                    now
+            }
+
+        internal fun markRegistrySync(serverId: Int, now: Long = System.currentTimeMillis()) {
+            synchronized(registrySyncLock) { lastRegistrySync[serverId] = now }
+        }
+
+        /** 服务器被删除/重置时清掉，避免残留一个"刚刚同步过"的印象。 */
+        internal fun forgetRegistrySync(serverId: Int) {
+            synchronized(registrySyncLock) { lastRegistrySync.remove(serverId) }
+        }
+
+        @VisibleForTesting
+        internal fun resetRegistrySyncForTests() {
+            synchronized(registrySyncLock) { lastRegistrySync.clear() }
+        }
 
         suspend fun shouldDoFastUpdates(context: Context): Boolean {
             val setting = DatabaseEntryPoint.resolve(context).settingsDao().get(0)
@@ -98,72 +135,91 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         Timber.d("Received intent: ${intent.action}")
+        // 一次扫描要在广播的进程生命周期里做完：几十个传感器的采集 + 每台服务器的网络上报，加上充电
+        // 事件后面那 5 秒的二次扫描。不用 goAsync 的话 Android 会在广播超时后把进程杀掉，工作被腰斩，
+        // 表现为上报失败，然后下一轮再重试一次——既费电又让上报时间不确定。
+        // 这里不用 common 里的 launchAsync：那个helper 带 30 秒硬超时，整套扫描在慢网络上会合法地超过它，
+        // 超时会让整轮工作被取消（比现在更糟）。
+        val pendingResult = goAsync()
         ioScope.launch {
-            skippableActions[intent.action]?.let { sensors ->
-                val noSensorsEnabled = sensors.none {
-                    isSensorEnabled(it)
-                }
-                if (noSensorsEnabled) {
-                    Timber.d(
-                        String.format(
-                            "Sensor(s) %s corresponding to received event %s are disabled, skipping sensors update",
-                            sensors.toString(),
-                            intent.action,
-                        ),
-                    )
-                    return@launch
-                }
+            try {
+                handleIntent(context, intent)
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Timber.e(e, "Unhandled exception while processing ${intent.action}")
+            } finally {
+                pendingResult.finish()
             }
+        }
+    }
 
-            if (intent.action == ACTION_STOP_BEACON_SCANNING) {
-                BluetoothSensorManager.enableDisableBeaconMonitor(context, false)
-                return@launch
+    private suspend fun handleIntent(context: Context, intent: Intent) {
+        skippableActions[intent.action]?.let { sensors ->
+            val noSensorsEnabled = sensors.none {
+                isSensorEnabled(it)
             }
+            if (noSensorsEnabled) {
+                Timber.d(
+                    String.format(
+                        "Sensor(s) %s corresponding to received event %s are disabled, skipping sensors update",
+                        sensors.toString(),
+                        intent.action,
+                    ),
+                )
+                return
+            }
+        }
 
-            @Suppress("DEPRECATION")
-            if (isSensorEnabled(LastUpdateManager.lastUpdate.id)) {
-                LastUpdateManager().sendLastUpdate(context, intent.action)
-                val allSettings = sensorDao.getSettings(LastUpdateManager.lastUpdate.id)
-                for (setting in allSettings) {
-                    if (setting.value != "" && intent.action == setting.value) {
-                        val eventData = intent.extras?.keySet()
-                            ?.associate { it.toString() to intent.extras?.get(it).toString() }
-                            ?.plus("intent" to intent.action.toString())
-                            ?: mapOf("intent" to intent.action.toString())
-                        Timber.d("Event data: $eventData")
-                        sensorDao.get(LastUpdateManager.lastUpdate.id).forEach { sensor ->
-                            if (!sensor.enabled) return@forEach
-                            try {
-                                serverManager.integrationRepository(sensor.serverId).fireEvent(
-                                    "android.intent_received",
-                                    eventData as Map<String, Any>,
-                                )
-                                Timber.d("Event successfully sent to Home Assistant")
-                            } catch (e: Exception) {
-                                Timber.e(e, "Unable to send event data to Home Assistant")
-                            }
+        if (intent.action == ACTION_STOP_BEACON_SCANNING) {
+            BluetoothSensorManager.enableDisableBeaconMonitor(context, false)
+            return
+        }
+
+        @Suppress("DEPRECATION")
+        if (isSensorEnabled(LastUpdateManager.lastUpdate.id)) {
+            LastUpdateManager().sendLastUpdate(context, intent.action)
+            val allSettings = sensorDao.getSettings(LastUpdateManager.lastUpdate.id)
+            for (setting in allSettings) {
+                if (setting.value != "" && intent.action == setting.value) {
+                    val eventData = intent.extras?.keySet()
+                        ?.associate { it.toString() to intent.extras?.get(it).toString() }
+                        ?.plus("intent" to intent.action.toString())
+                        ?: mapOf("intent" to intent.action.toString())
+                    Timber.d("Event data: $eventData")
+                    sensorDao.get(LastUpdateManager.lastUpdate.id).forEach { sensor ->
+                        if (!sensor.enabled) return@forEach
+                        try {
+                            serverManager.integrationRepository(sensor.serverId).fireEvent(
+                                "android.intent_received",
+                                eventData as Map<String, Any>,
+                            )
+                            Timber.d("Event successfully sent to Home Assistant")
+                        } catch (e: Exception) {
+                            Timber.e(e, "Unable to send event data to Home Assistant")
                         }
                     }
                 }
             }
+        }
 
-            if (intent.action == Intent.ACTION_TIME_TICK && !shouldDoFastUpdates(context)) {
-                Timber.i("Skipping faster update because not charging/different preference")
-                return@launch
+        if (intent.action == Intent.ACTION_TIME_TICK && !shouldDoFastUpdates(context)) {
+            Timber.i("Skipping faster update because not charging/different preference")
+            return
+        }
+        if (intent.action == ACTION_UPDATE_SENSOR) {
+            val sensorId = intent.getStringExtra(EXTRA_SENSOR_ID)
+            if (sensorId != null) {
+                updateSensor(context, sensorId)
             }
-            if (intent.action == ACTION_UPDATE_SENSOR) {
-                val sensorId = intent.getStringExtra(EXTRA_SENSOR_ID)
-                if (sensorId != null) {
-                    updateSensor(context, sensorId)
-                }
-            } else {
+        } else {
+            updateSensors(context, serverManager, sensorDao, intent)
+            if (chargingActions.contains(intent.action)) {
+                // Add a 5 second delay to perform another update so charging state updates completely.
+                // This is necessary as the system needs a few seconds to verify the charger.
+                // 第二轮保留：它是充电状态报全的必要条件（时效相关），而现在这一轮不再重复拉注册表，
+                // 成本只剩"重读一遍传感器 + 只推变化的值"。
+                delay(5000L)
                 updateSensors(context, serverManager, sensorDao, intent)
-                if (chargingActions.contains(intent.action)) {
-                    // Add a 5 second delay to perform another update so charging state updates completely.
-                    // This is necessary as the system needs a few seconds to verify the charger.
-                    delay(5000L)
-                    updateSensors(context, serverManager, sensorDao, intent)
-                }
             }
         }
     }
@@ -205,12 +261,15 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
         server: Server,
         sensorDao: SensorDao,
     ): Boolean {
-        val config: GetConfigResponse
+        val config: GetConfigResponse?
         val integrationRepository: IntegrationRepository
 
         try {
             integrationRepository = serverManager.integrationRepository(server.id)
-            config = integrationRepository.getConfig()
+            // 见 REGISTRY_SYNC_INTERVAL：注册表只在到期的那一轮去拉，其余轮次用 null 表示"这轮不对齐"。
+            // 版本、是否可信这些判断走的是各自的 4 小时/本地缓存，不产生请求。
+            config = if (isRegistrySyncDue(server.id)) integrationRepository.getConfig() else null
+            if (config != null) markRegistrySync(server.id)
         } catch (e: Exception) {
             Timber.e(e, "Error while getting core config to sync sensor status aborting")
             return false
@@ -220,7 +279,10 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
         val supportsDisabledSensors = integrationRepository.isHomeAssistantVersionAtLeast(2022, 6, 0)
         val serverIsTrusted = integrationRepository.isTrusted()
         val coreSensorStatus: Map<String, Boolean>? =
-            if (supportsDisabledSensors && (serverIsTrusted || (sensorDao.getEnabledCount() ?: 0) > 0)) {
+            if (config != null &&
+                supportsDisabledSensors &&
+                (serverIsTrusted || (sensorDao.getEnabledCount() ?: 0) > 0)
+            ) {
                 config.entities
                     ?.filter { it.value["disabled"] != null }
                     ?.mapValues { !(it.value["disabled"] as Boolean) } // Map to sensor id -> enabled

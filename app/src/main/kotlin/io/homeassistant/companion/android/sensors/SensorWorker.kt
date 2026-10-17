@@ -30,7 +30,15 @@ class SensorWorker(appContext: Context, workerParams: WorkerParameters) : Sensor
                     .build()
 
             WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(TAG, ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE, sensorWorker)
+                .enqueueUniquePeriodicWork(
+                    TAG,
+                    // 原来无条件 CANCEL_AND_REENQUEUE：每进一次 App（LaunchActivity 与 WebViewActivity
+                    // 都调 start()）就把周期任务推倒重排，于是立刻多跑一轮全套扫描。KEEP 的语义正好是
+                    // "已经在排就保持原排期，不在排（含已终止）就新建"，15 分钟的采集节奏一点不变，
+                    // 只是不再因为打开 App 而重复劳动。
+                    ExistingPeriodicWorkPolicy.KEEP,
+                    sensorWorker,
+                )
         }
     }
 
