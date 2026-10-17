@@ -45,7 +45,9 @@ class SettingViewModel @Inject constructor(private val settingsDao: SettingsDao,
                 it.websocketSetting = setting
                 settingsDao.update(it)
             }
-            WebsocketManager.start(getApplication())
+            // 用户刚刚改了 WebSocket 模式：这是唯一需要"立刻起跑"的调用点。例行报到（亮灭屏、网络状态
+            // 变化、进 App）都走 start() 的 KEEP 路径，不再重置周期排期。
+            WebsocketManager.startImmediately(getApplication())
         }
     }
 

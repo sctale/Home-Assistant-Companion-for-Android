@@ -16,7 +16,6 @@ import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import dagger.hilt.EntryPoint
@@ -65,7 +64,18 @@ class WebsocketManager(appContext: Context, workerParams: WorkerParameters) :
         }
         private val ACTION_EXTRA_KEYS = listOf("uri", "behavior", "authenticationRequired")
 
-        suspend fun start(context: Context) {
+        /** 老 unique work 名的一次性清理；每个广播都调 start() 时不必反复写 WorkManager。 */
+        @VisibleForTesting
+        internal var migratedLegacyWorkName = false
+
+        /**
+         * @param restartNow 调用方刚刚改变了该功能的配置（例如用户在设置里切换了 WebSocket 模式），
+         * 需要立刻按新配置起跑。默认的 false 表示"只是例行报到"：此时**不要**把已经在排的周期任务推倒
+         * 重来——`ENQUEUED` 对周期任务来说是等下一轮的正常状态，以前的无条件重排等于每次亮屏、每次
+         * 网络状态变化都重置 15 分钟排期并重启 worker，而每次重启都是一次新的连接、订阅恢复和前台
+         * 通知刷新。收通知的时效不受影响：worker 每 30 秒自己重读一次配置。
+         */
+        suspend fun start(context: Context, restartNow: Boolean = false) {
             val websocketNotifications =
                 PeriodicWorkRequestBuilder<WebsocketManager>(15, TimeUnit.MINUTES)
                     .build()
@@ -75,24 +85,27 @@ class WebsocketManager(appContext: Context, workerParams: WorkerParameters) :
             // Renaming the unique work name created two periodic workers and caused duplicate WebSocket notifications.
             // See: https://github.com/home-assistant/android/issues/6066#issuecomment-3608649429
             // Please don't remove before December 2026 to allow enough time for users to upgrade.
-            workManager.cancelUniqueWork(OLD_UNIQUE_WORK_NAME)
+            if (!migratedLegacyWorkName) {
+                workManager.cancelUniqueWork(OLD_UNIQUE_WORK_NAME)
+                migratedLegacyWorkName = true
+            }
 
             val workInfo = workManager.getWorkInfosForUniqueWork(UNIQUE_WORK_NAME).await().firstOrNull()
 
-            if (workInfo == null || workInfo.state.isFinished || workInfo.state == WorkInfo.State.ENQUEUED) {
-                workManager.enqueueUniquePeriodicWork(
-                    UNIQUE_WORK_NAME,
-                    ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
-                    websocketNotifications,
-                )
-            } else {
-                workManager.enqueueUniquePeriodicWork(
-                    UNIQUE_WORK_NAME,
-                    ExistingPeriodicWorkPolicy.KEEP,
-                    websocketNotifications,
-                )
+            val policy = when {
+                restartNow -> ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE
+                workInfo == null || workInfo.state.isFinished -> ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE
+                else -> ExistingPeriodicWorkPolicy.KEEP
             }
+            workManager.enqueueUniquePeriodicWork(
+                UNIQUE_WORK_NAME,
+                policy,
+                websocketNotifications,
+            )
         }
+
+        /** 用户刚改完 WebSocket 配置时用：立刻按新配置起跑，不等下一轮排期。 */
+        suspend fun startImmediately(context: Context) = start(context, restartNow = true)
     }
 
     private val notificationManager = applicationContext.getSystemService<NotificationManager>()!!
