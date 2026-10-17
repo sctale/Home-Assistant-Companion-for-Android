@@ -139,6 +139,11 @@ class LocationSensorManager :
         private const val PREFERENCES_NAME = "location_sensor_manager"
         private const val PREF_REGISTERED_ALERTS = "registered_proximity_alerts"
 
+        // SharedPreferences 里"已经上报过什么"的键前缀，按 serverId 分键（见 LocationRuntimeState 的说明）。
+        private const val KEY_LAST_SEND = "last_send_at"
+        private const val KEY_LAST_COORDS = "last_sent_coords"
+        private const val KEY_ZONES_INSIDE = "zones_inside"
+
         const val ACTION_REQUEST_LOCATION_UPDATES =
             "io.homeassistant.companion.android.background.REQUEST_UPDATES"
         const val ACTION_REQUEST_ACCURATE_LOCATION_UPDATE =
@@ -253,17 +258,39 @@ class LocationSensorManager :
     private lateinit var latestContext: Context
 
     /**
-     * Guards the per-server maps below. The periodic worker, a proximity-alert callback and a fix
-     * callback can all run on the IO dispatcher at the same time, and plain `LinkedHashMap` is not safe
-     * for concurrent mutation.
+     * What has already been reported, kept in [LocationRuntimeState] rather than in fields: a
+     * manifest-registered receiver is re-instantiated for every broadcast (and background fixes arrive as
+     * broadcasts), so instance state is empty before each fix and every guard would silently never fire.
+     * The two facts that decide "did anything change" are written through to SharedPreferences so they
+     * also survive the process being frozen and revived.
      */
-    private val stateLock = Any()
-    private val lastLocationSend = mutableMapOf<Int, Long>()
-    private val lastUpdateLocation = mutableMapOf<Int, String?>()
-    private val lastLocationReceived = mutableMapOf<Int, Long>()
-    private val zones = mutableMapOf<Int, List<Entity>>()
-    private val zonesLastReceived = mutableMapOf<Int, Long>()
-    private val lastInZones = mutableMapOf<Int, Set<String>>()
+    private val stateStore = object : LocationRuntimeState.Store {
+        override fun lastSendMillis(serverId: Int): Long = preferences().getLong(gateKey(KEY_LAST_SEND, serverId), 0L)
+
+        override fun lastCoordinates(serverId: Int): String? =
+            preferences().getString(gateKey(KEY_LAST_COORDS, serverId), null)
+
+        override fun writeLastSend(serverId: Int, whenMillis: Long, coordinates: String) {
+            preferences().edit {
+                putLong(gateKey(KEY_LAST_SEND, serverId), whenMillis)
+                putString(gateKey(KEY_LAST_COORDS, serverId), coordinates)
+            }
+        }
+
+        // 键不存在 = 从没记过；键存在但为空串 = 记过，且当时不在任何区域。两者必须区分，否则每次
+        // 进程复活都会把"一直待在家"当成刚刚进入，凭空触发一次 zone_entered 自动化。
+        override fun zoneMembership(serverId: Int): Set<String>? =
+            preferences().getString(gateKey(KEY_ZONES_INSIDE, serverId), null)
+                ?.split(',')
+                ?.filter { it.isNotBlank() }
+                ?.toSet()
+
+        override fun writeZoneMembership(serverId: Int, entityIds: Set<String>) {
+            preferences().edit {
+                putString(gateKey(KEY_ZONES_INSIDE, serverId), entityIds.sorted().joinToString(","))
+            }
+        }
+    }
 
     override fun onReceive(context: Context, intent: Intent) {
         latestContext = context
@@ -311,17 +338,21 @@ class LocationSensorManager :
             // Zone membership is computed from the background fix stream, so the subscription backs both
             // sensors. requestLocationUpdates() re-registers with an identical PendingIntent, which the
             // platform treats as a replacement rather than an additional subscription.
-            requestLocationUpdates()
+            val reconfigured = requestLocationUpdates()
 
             if (zoneEnabled) {
+                // 内部按告警指纹去重：集合没变就一次系统调用都不发。
                 requestZoneProximityAlerts()
             }
 
-            serverManager(latestContext).servers().forEach {
-                getSendLocationAsSetting(it.id) // Creates the setting so it appears in the sensor UI.
+            if (reconfigured) {
+                // 只有真的重挂订阅时才补设置行：这一段每个服务器一次 getServer + 7 次 getSetting，
+                // 而它每次都把同样的值再写一遍，对检测时效没有任何帮助。
+                serverManager(latestContext).servers().forEach {
+                    getSendLocationAsSetting(it.id) // Creates the setting so it appears in the sensor UI.
+                }
+                ensureSettingsExist()
             }
-
-            ensureSettingsExist()
         } catch (e: Exception) {
             Timber.e(e, "Issue setting up location tracking")
         }
@@ -374,15 +405,6 @@ class LocationSensorManager :
     }
 
     /**
-     * Chooses a provider. `auto` prefers the platform's fused/network provider - cheap, city-block
-     * accuracy, the no-services equivalent of Play's `BALANCED_POWER_ACCURACY` - and only falls back to
-     * GPS, which is the expensive one. A device with no network location provider can pin `gps` here.
-     */
-    /**
-     * The provider choice is a single policy owned by `location_background` and applied to every
-     * location request, rather than a per-sensor setting the user would have to keep in sync.
-     */
-    /**
      * Chooses a provider.
      *
      * [Purpose.BACKGROUND] optimises for cost: the platform fused provider, then network, and GPS
@@ -392,6 +414,9 @@ class LocationSensorManager :
      * one-off "accurate location" request is the opposite trade: it runs briefly, and returning a
      * ~100 m network fix would sail straight through the minimum-accuracy gate and make the
      * `accurate_location` sensor indistinguishable from background reporting.
+     *
+     * The provider choice is a single policy owned by `location_background` and applied to every
+     * location request, rather than a per-sensor setting the user would have to keep in sync.
      */
     @SuppressLint("InlinedApi") // FUSED_PROVIDER is an inlined String constant; gated on API 31 below.
     private suspend fun selectProvider(manager: LocationManager, purpose: Purpose): String? {
@@ -431,17 +456,24 @@ class LocationSensorManager :
             }
     }
 
-    private suspend fun requestLocationUpdates() {
+    /**
+     * Registers the background subscription.
+     *
+     * @return true when the subscription was (re)registered with the platform, false when the desired
+     * fingerprint is identical to what is already registered. Callers use that to skip the setup work
+     * that only matters after a real change.
+     */
+    private suspend fun requestLocationUpdates(): Boolean {
         if (!checkPermission(latestContext, backgroundLocation.id)) {
             Timber.w("Not registering for location updates because of permissions.")
-            return
+            return false
         }
 
         val manager = latestContext.getSystemService<LocationManager>() ?: run {
             Timber.w("LocationManager is unavailable on this device")
-            return
+            return false
         }
-        val provider = selectProvider(manager, Purpose.BACKGROUND) ?: return
+        val provider = selectProvider(manager, Purpose.BACKGROUND) ?: return false
 
         val intervalSeconds = getSetting(
             latestContext,
@@ -458,6 +490,14 @@ class LocationSensorManager :
             SensorSettingType.NUMBER,
             DEFAULT_MINIMUM_DISTANCE_METERS.toInt().toString(),
         ).toFloatOrNull()?.coerceAtLeast(0f) ?: DEFAULT_MINIMUM_DISTANCE_METERS
+
+        // 同一份配置重复注册并不会让任何一次定位更早到，只是让硬件重新评估一遍请求；每次传感器扫描
+        // 都会走到这里，所以按指纹去重。参数一变（含用户在设置里改节奏）指纹就不同，照旧重挂。
+        val signature = "$provider|$intervalSeconds|$minDistance"
+        if (signature == LocationRuntimeState.subscriptionSignature) {
+            Timber.d("Background subscription unchanged ($signature), nothing to re-register")
+            return false
+        }
 
         Timber.d("Registering '$provider' location updates every ~${intervalSeconds}s")
         try {
@@ -483,16 +523,23 @@ class LocationSensorManager :
             }
         } catch (e: SecurityException) {
             Timber.e(e, "Missing permission to request location updates")
+            return false
         } catch (e: IllegalArgumentException) {
             Timber.e(e, "Provider '$provider' is not available on this device")
+            return false
         } catch (e: Exception) {
             Timber.e(e, "Issue requesting location updates")
+            return false
         }
+        LocationRuntimeState.subscriptionSignature = signature
+        return true
     }
 
     private fun removeBackgroundUpdateRequests() {
         val manager = latestContext.getSystemService<LocationManager>() ?: return
         Timber.d("Removing background location requests.")
+        // 订阅已经不在了，指纹必须一起作废：否则下一次 setup 会以为"配置没变"而跳过重新注册。
+        LocationRuntimeState.subscriptionSignature = null
         try {
             manager.removeUpdates(getLocationUpdateIntent(ACTION_PROCESS_LOCATION))
         } catch (e: Exception) {
@@ -504,7 +551,9 @@ class LocationSensorManager :
         Timber.d("Removing all location requests.")
         removeBackgroundUpdateRequests()
         removeProximityAlerts()
-        synchronized(stateLock) { lastInZones.clear() }
+        // 两个定位传感器都关了：丢掉内存态。持久化的门控留着没关系——重新开启后第一次评估会拿它当基线，
+        // 而那正是想要的语义（期间真走开了，就该报一次离开）。
+        LocationRuntimeState.reset()
     }
 
     /**
@@ -534,31 +583,54 @@ class LocationSensorManager :
 
         val manager = latestContext.getSystemService<LocationManager>() ?: return
 
-        // Re-register from scratch: zones get renamed, resized and deleted server-side, and the only
-        // handle the platform offers for cleanup is the PendingIntent each alert came with.
+        val servers = getEnabledServers(latestContext, zoneLocation)
+        val alertsWanted = mutableListOf<ProximityAlert>()
+        servers.forEach { serverId ->
+            val zoneList = getZones(serverId)
+            if (zoneList == null) {
+                Timber.w("Zone list unavailable for server $serverId")
+                return@forEach
+            }
+            alertsWanted += zoneList.mapNotNull { zone ->
+                val latitude = (zone.attributes["latitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                val longitude = (zone.attributes["longitude"] as? Number)?.toDouble() ?: return@mapNotNull null
+                val radius = (zone.attributes["radius"] as? Number)?.toFloat() ?: return@mapNotNull null
+                ProximityAlert(zoneKey(serverId, zone.entityId), latitude, longitude, radius)
+            }
+        }
+
+        if (servers.isNotEmpty() && alertsWanted.isEmpty()) {
+            // 一个区域都没拿到（多半是所有服务器都取列表失败）时什么都不动：原先这里是"先全删再重建"，
+            // 拿不到数据就等于把仍然有效的系统告警清空，白丢一段围栏唤醒。
+            Timber.w("No proximity alerts could be derived, leaving the registered set untouched")
+            return
+        }
+
+        // 小区域优先：半径小的边界更需要及时的围栏唤醒，超出上限被截断的应该是最"松"的那些。
+        val desired = alertsWanted
+            .sortedWith(compareBy({ it.radius }, { it.key }))
+            .take(MAX_PROXIMITY_ALERTS)
+
+        // 指纹一致就一个系统调用都不发。每次广播都会走到这里，而全删全建意味着撤销并重挂系统级告警、
+        // 重写持久化列表——纯粹的浪费唤醒，对检测时效毫无帮助。
+        val persisted = persistedRegisteredAlerts().mapNotNull { ProximityAlert.fromSpec(it) }
+        if (persisted == desired) return
+
         removeProximityAlerts()
 
         val registered = mutableListOf<String>()
-        getEnabledServers(latestContext, zoneLocation).forEach { serverId ->
-            getZones(serverId).forEach { zone ->
-                if (registered.size >= MAX_PROXIMITY_ALERTS) return@forEach
-                val latitude = (zone.attributes["latitude"] as? Number)?.toDouble() ?: return@forEach
-                val longitude = (zone.attributes["longitude"] as? Number)?.toDouble() ?: return@forEach
-                val radius = (zone.attributes["radius"] as? Number)?.toFloat() ?: return@forEach
-                val key = zoneKey(serverId, zone.entityId)
-
-                try {
-                    manager.addProximityAlert(
-                        latitude,
-                        longitude,
-                        radius + DEFAULT_TRIGGER_RANGE_METERS,
-                        PROXIMITY_ALERT_NEVER_EXPIRES,
-                        getProximityAlertIntent(key),
-                    )
-                    registered.add(key)
-                } catch (e: Exception) {
-                    Timber.e(e, "Platform refused a proximity alert for '$key'")
-                }
+        desired.forEach { alert ->
+            try {
+                manager.addProximityAlert(
+                    alert.latitude,
+                    alert.longitude,
+                    alert.radius + DEFAULT_TRIGGER_RANGE_METERS,
+                    PROXIMITY_ALERT_NEVER_EXPIRES,
+                    getProximityAlertIntent(alert.key),
+                )
+                registered.add(alert.spec())
+            } catch (e: Exception) {
+                Timber.e(e, "Platform refused a proximity alert for '${alert.key}'")
             }
         }
 
@@ -572,7 +644,9 @@ class LocationSensorManager :
         if (registered.isEmpty()) return
 
         Timber.d("Removing ${registered.size} proximity alerts")
-        registered.forEach { key ->
+        registered.forEach { spec ->
+            // 持久化的是整条指纹（纬度|经度|半径|键），撤注册只需要当初那个 PendingIntent 的键。
+            val key = ProximityAlert.keyFromSpec(spec) ?: return@forEach
             try {
                 manager.removeProximityAlert(getProximityAlertIntent(key))
             } catch (e: Exception) {
@@ -603,6 +677,8 @@ class LocationSensorManager :
 
     private fun preferences() = latestContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
+    private fun gateKey(prefix: String, serverId: Int) = "${prefix}_$serverId"
+
     private fun persistedRegisteredAlerts(): List<String> = preferences().getString(PREF_REGISTERED_ALERTS, "")
         .orEmpty()
         .split("\n")
@@ -614,11 +690,8 @@ class LocationSensorManager :
 
     private suspend fun handleLocationUpdate(intent: Intent) {
         Timber.d("Received location update.")
-        val now = System.currentTimeMillis()
         val serverIds = getEnabledServers(latestContext, backgroundLocation)
-        synchronized(stateLock) {
-            serverIds.forEach { lastLocationReceived[it] = now }
-        }
+        serverIds.forEach { LocationRuntimeState.prime(it, stateStore) }
 
         // A PendingIntent subscription delivers the fix as an extra, not as a LocationResult.
         val location = IntentCompat.getParcelableExtra(
@@ -705,10 +778,8 @@ class LocationSensorManager :
         val unbaselined = mutableSetOf<Int>()
 
         enabledServers.forEach { serverId ->
-            val zoneList = try {
-                getZones(serverId)
-            } catch (e: Exception) {
-                Timber.e(e, "Unable to load zones for server $serverId")
+            val zoneList = getZones(serverId) ?: run {
+                Timber.w("No zone list for server $serverId, skipping zone evaluation this round")
                 return@forEach
             }
 
@@ -722,8 +793,11 @@ class LocationSensorManager :
                         .thenBy { distanceToZoneCenter(location, it) },
                 ).mapTo(mutableSetOf()) { it.entityId }
 
-            val baseline = synchronized(stateLock) { lastInZones[serverId] }
-            synchronized(stateLock) { lastInZones[serverId] = inside }
+            LocationRuntimeState.prime(serverId, stateStore)
+            val baseline = LocationRuntimeState.zoneBaseline(serverId)
+            if (baseline == null || baseline != inside) {
+                LocationRuntimeState.setZoneBaseline(serverId, inside, stateStore)
+            }
             currentZones[serverId] = inside
 
             if (baseline == null) {
@@ -825,7 +899,14 @@ class LocationSensorManager :
         val updateLocationAs = getSendLocationAsSetting(serverId)
         if (updateLocationAs == SEND_LOCATION_AS_ZONE_ONLY) {
             // The user asked for zone names only, so no raw coordinate may leave the device on this path.
-            val insideZones = getZones(serverId)
+            val zonesForName = getZones(serverId)
+            if (zonesForName == null) {
+                // 区域拿不到时不上报：按"没有区域"发出去的 `not_home` 是错的，会白白触发用户的
+                // "我到家了/我走了"自动化；下一轮（定位或 15 分钟兜底）再补，节奏不受影响。
+                Timber.w("No zone list for server $serverId, withholding zone-only update")
+                return
+            }
+            val insideZones = zonesForName
                 .filter { zone ->
                     val radius = zone.attributes["radius"] as? Number
                     radius != null && runCatching { zone.containsWithAccuracy(location) }.getOrDefault(false)
@@ -876,8 +957,8 @@ class LocationSensorManager :
         val now = System.currentTimeMillis()
 
         Timber.d("Evaluating whether to send this location update")
-        val lastSend = synchronized(stateLock) { lastLocationSend[serverId] ?: 0L }
-        val lastSentString = synchronized(stateLock) { lastUpdateLocation[serverId] }
+        val lastSend = LocationRuntimeState.lastSendMillis(serverId)
+        val lastSentString = LocationRuntimeState.lastCoordinates(serverId)
         val skip = LocationSendGate.skipReason(
             now = now,
             locationTime = location.time,
@@ -905,10 +986,7 @@ class LocationSensorManager :
             Timber.d("Location update sent successfully for $serverId as $updateLocationAs")
             // Only advance the dedupe bookkeeping after a confirmed send: advancing it beforehand makes a
             // failed send suppress the next perfectly good fix.
-            synchronized(stateLock) {
-                lastLocationSend[serverId] = now
-                lastUpdateLocation[serverId] = updateLocationString
-            }
+            LocationRuntimeState.recordSent(serverId, now, updateLocationString, stateStore)
             logLocationUpdate(location, updateLocation, serverId, trigger, LocationHistoryItemResult.SENT)
 
             if (geocodeIncludeLocation) {
@@ -953,26 +1031,28 @@ class LocationSensorManager :
             SEND_LOCATION_AS_EXACT
         }
 
-    private suspend fun getZones(serverId: Int, forceRefresh: Boolean = false): List<Entity> {
-        val cached = synchronized(stateLock) { zones[serverId] }
-        val stale = synchronized(stateLock) {
-            (zonesLastReceived[serverId] ?: 0L) < System.currentTimeMillis() - zoneCacheDurationMs
+    /**
+     * Zone list for [serverId]: the cached one while it is fresh, otherwise exactly one fetch.
+     *
+     * Returns null only when the fetch failed **and** nothing is cached. Callers must then skip their
+     * zone work instead of treating "unknown" as "no zones": an empty list would fire `zone_exited` for
+     * every zone the device is inside — a wrong state in Home Assistant, plus the webhook POST needed to
+     * correct it. A server that genuinely has no zones caches its empty list normally, so it is not
+     * re-fetched on every fix.
+     */
+    private suspend fun getZones(serverId: Int): List<Entity>? {
+        val now = System.currentTimeMillis()
+        LocationRuntimeState.cachedZones(serverId, now, zoneCacheDurationMs)?.let { return it }
+
+        return try {
+            val fetched = serverManager(latestContext).integrationRepository(serverId).getZones()
+            LocationRuntimeState.storeZones(serverId, fetched, System.currentTimeMillis())
+            fetched
+        } catch (e: Exception) {
+            Timber.e(e, "Error receiving zones from Home Assistant for server $serverId")
+            // 取不到就退回过期缓存：区域列表改动很少，按旧列表判断远比按"没有区域"判断准。
+            LocationRuntimeState.cachedZones(serverId, now, Long.MAX_VALUE)
         }
-        if (forceRefresh || cached.isNullOrEmpty() || stale) {
-            try {
-                val fetched = serverManager(latestContext).integrationRepository(serverId).getZones()
-                synchronized(stateLock) {
-                    zones[serverId] = fetched
-                    zonesLastReceived[serverId] = System.currentTimeMillis()
-                }
-            } catch (e: Exception) {
-                Timber.e(e, "Error receiving zones from Home Assistant")
-                if (forceRefresh) {
-                    synchronized(stateLock) { zones[serverId] = emptyList() }
-                }
-            }
-        }
-        return synchronized(stateLock) { zones[serverId] } ?: emptyList()
     }
 
     private suspend fun requestSingleAccurateLocation() {
