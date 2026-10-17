@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <changelog xmlns:tools="http://schemas.android.com/tools"
     tools:ignore="MissingDefaultResource">
+    <release version="0.1.7" versioncode="107">
+        <change>封掉一处会导致整轮传感器扫描永久挂起的路径：一次性定位请求加了 30 秒超时与取消，扫描合流器加 60 秒硬上限。</change>
+        <change>没有这两条保险，"合流重复扫描"的优化在一个不回调的平台上会变成"之后的上报全部空转"。</change>
+    </release>
     <release version="0.1.6" versioncode="106">
         <change>同一秒内到达的多次传感器扫描被合流为"当前一轮 + 最多一轮补跑"：补跑重读实时值，状态变化一个都不丢。</change>
     </release>
