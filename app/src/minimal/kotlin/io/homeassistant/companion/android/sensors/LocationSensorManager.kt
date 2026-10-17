@@ -631,8 +631,9 @@ class LocationSensorManager :
         val persisted = persistedRegisteredAlerts().mapNotNull { ProximityAlert.fromSpec(it) }
         if (persisted == desired) return
 
-        removeProximityAlerts()
-
+        // 先挂新的、再撤销不再需要的。中间哪怕进程被杀，也不会留下"系统里还挂着、记录里却没有"的孤儿
+        // 围栏——那种告警会一直唤醒应用，却再也没有句柄能取消它（只能靠清除数据）。旧的"先全删再重建"
+        // 正好把这个窗口放在了最危险的位置。同一 key 重复 addProximityAlert 是替换，所以这个顺序安全。
         val registered = mutableListOf<String>()
         desired.forEach { alert ->
             try {
@@ -649,25 +650,35 @@ class LocationSensorManager :
             }
         }
 
+        val keep = registered.toSet()
+        removeProximityAlertKeys(
+            persisted.mapNotNull {
+                it.spec()
+            }.filterNot { it in keep }.mapNotNull { ProximityAlert.keyFromSpec(it) },
+        )
+
         persistRegisteredAlerts(registered)
         Timber.d("Registered ${registered.size} proximity alerts")
     }
 
-    private fun removeProximityAlerts() {
+    private fun removeProximityAlertKeys(keys: List<String>) {
+        if (keys.isEmpty()) return
         val manager = latestContext.getSystemService<LocationManager>() ?: return
-        val registered = persistedRegisteredAlerts()
-        if (registered.isEmpty()) return
-
-        Timber.d("Removing ${registered.size} proximity alerts")
-        registered.forEach { spec ->
-            // 持久化的是整条指纹（纬度|经度|半径|键），撤注册只需要当初那个 PendingIntent 的键。
-            val key = ProximityAlert.keyFromSpec(spec) ?: return@forEach
+        Timber.d("Removing ${keys.size} stale proximity alerts")
+        keys.forEach { key ->
             try {
                 manager.removeProximityAlert(getProximityAlertIntent(key))
             } catch (e: Exception) {
                 Timber.e(e, "Issue removing proximity alert for '$key'")
             }
         }
+    }
+
+    private fun removeProximityAlerts() {
+        val persisted = persistedRegisteredAlerts()
+        if (persisted.isEmpty()) return
+        // 持久化的是整条指纹（纬度|经度|半径|键），撤注册只需要当初那个 PendingIntent 的键。
+        removeProximityAlertKeys(persisted.mapNotNull { ProximityAlert.keyFromSpec(it) })
         persistRegisteredAlerts(emptyList())
     }
 
