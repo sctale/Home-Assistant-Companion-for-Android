@@ -234,24 +234,30 @@ abstract class SensorReceiverBase : BroadcastReceiver() {
             return
         }
 
-        managers.forEach { manager ->
-            val hasSensor = manager.hasSensor(context)
-            if (hasSensor) {
-                try {
-                    manager.requestSensorUpdate(context, intent)
-                } catch (e: Exception) {
-                    Timber.e(e, "Issue requesting updates for ${context.getString(manager.name)}")
+        // 一轮完整扫描要走完所有 manager 并向每台服务器上报，耗时可以比两条系统广播的间隔还长：插上充电器、
+        // 省电模式切换、Wi-Fi 状态变化挤在同一秒里时，就会各起一轮彼此重复的扫描，而只有最后一轮的结果
+        // 可能真的不一样。合流成"正在跑的这一轮 + 最多一轮补跑"：补跑重读实时值，所以任何一次状态变化都不
+        // 会丢掉或用过期数据上报——省掉的只是同一时刻重复做的功（和定位那边"值没变就不上报"同一类）。
+        SensorSweepCoalescer.run {
+            managers.forEach { manager ->
+                val hasSensor = manager.hasSensor(context)
+                if (hasSensor) {
+                    try {
+                        manager.requestSensorUpdate(context, intent)
+                    } catch (e: Exception) {
+                        Timber.e(e, "Issue requesting updates for ${context.getString(manager.name)}")
+                    }
                 }
             }
-        }
 
-        try {
-            serverManager.servers().map { server ->
-                ioScope.async { syncSensorsWithServer(context, serverManager, server, sensorDao) }
-            }.awaitAll()
-            Timber.i("Sensor updates and sync completed")
-        } catch (e: Exception) {
-            Timber.e(e, "Exception while awaiting sensor updates.")
+            try {
+                serverManager.servers().map { server ->
+                    ioScope.async { syncSensorsWithServer(context, serverManager, server, sensorDao) }
+                }.awaitAll()
+                Timber.i("Sensor updates and sync completed")
+            } catch (e: Exception) {
+                Timber.e(e, "Exception while awaiting sensor updates.")
+            }
         }
     }
 
